@@ -9,5 +9,5 @@ numpy>=1.21.0
 # Additional utilities
 python-dateutil>=2.8.0
 
-python-dotenv>=1.0.0
-hashlib-compat>=1.0.0
+python-dotenv
+hashlib-compat
