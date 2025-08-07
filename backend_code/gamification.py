@@ -1,221 +1,224 @@
 """
-Gamification System for ScienceGPT
-Manages points, badges, streaks, and rewards
+Gamification Manager for ScienceGPT
+Handles points, badges, and achievement system
 """
 
 import streamlit as st
-from typing import Dict, List, Tuple
 from datetime import datetime, timedelta
-import json
+from typing import List, Dict, Any
 
-class GamificationSystem:
-    """Handles all gamification features"""
+class GamificationManager:
+    """Manages gamification features like points, badges, and achievements"""
 
     def __init__(self):
-        self.badge_definitions = self._define_badges()
-        self.point_system = self._define_point_system()
-
-    def _define_badges(self) -> Dict:
-        """Define available badges and their criteria"""
-        return {
+        """Initialize gamification manager"""
+        self.badges = {
             "first_question": {
                 "name": "Curious Mind",
-                "icon": "🤔",
                 "description": "Asked your first question",
-                "criteria": {"questions_asked": 1}
+                "icon": "🤔",
+                "points_required": 0
             },
-            "science_explorer": {
-                "name": "Science Explorer",
-                "icon": "🔍",
-                "description": "Asked 10 science questions",
-                "criteria": {"questions_asked": 10}
+            "question_master": {
+                "name": "Question Master", 
+                "description": "Asked 10 questions",
+                "icon": "❓",
+                "points_required": 100
             },
             "daily_learner": {
                 "name": "Daily Learner",
-                "icon": "📅",
-                "description": "Used ScienceGPT for 3 consecutive days",
-                "criteria": {"streak_days": 3}
+                "description": "Used the app for 3 consecutive days",
+                "icon": "📚",
+                "points_required": 0
             },
-            "week_warrior": {
-                "name": "Week Warrior",
-                "icon": "🗓️",
-                "description": "7 day learning streak",
-                "criteria": {"streak_days": 7}
+            "science_explorer": {
+                "name": "Science Explorer",
+                "description": "Explored 3 different subjects",
+                "icon": "🔬",
+                "points_required": 0
             },
-            "quiz_master": {
-                "name": "Quiz Master",
-                "icon": "🧠",
-                "description": "Answered 5 quiz questions correctly",
-                "criteria": {"correct_answers": 5}
+            "fact_collector": {
+                "name": "Fact Collector",
+                "description": "Generated 5 facts of the day",
+                "icon": "💡",
+                "points_required": 0
             },
-            "points_collector": {
-                "name": "Points Collector",
+            "point_milestone_50": {
+                "name": "Rising Star",
+                "description": "Earned 50 points",
                 "icon": "⭐",
+                "points_required": 50
+            },
+            "point_milestone_100": {
+                "name": "Science Star", 
                 "description": "Earned 100 points",
-                "criteria": {"total_points": 100}
-            },
-            "science_star": {
-                "name": "Science Star",
                 "icon": "🌟",
-                "description": "Earned 500 points",
-                "criteria": {"total_points": 500}
+                "points_required": 100
             },
-            "topic_master": {
-                "name": "Topic Master",
-                "icon": "🎯",
-                "description": "Explored 5 different topics",
-                "criteria": {"topics_explored": 5}
-            },
-            "helping_hand": {
-                "name": "Helping Hand",
-                "icon": "🤝",
-                "description": "Shared knowledge with classmates",
-                "criteria": {"shares": 3}
-            },
-            "consistent_learner": {
-                "name": "Consistent Learner",
-                "icon": "📈",
-                "description": "30 day learning streak",
-                "criteria": {"streak_days": 30}
+            "point_milestone_200": {
+                "name": "Knowledge Champion",
+                "description": "Earned 200 points",
+                "icon": "🏆", 
+                "points_required": 200
             }
         }
 
-    def _define_point_system(self) -> Dict:
-        """Define point rewards for different actions"""
-        return {
-            "question_asked": 10,
-            "daily_challenge": 25,
-            "correct_answer": 15,
-            "topic_exploration": 5,
-            "daily_login": 5,
-            "sharing_knowledge": 20,
-            "completing_lesson": 30
-        }
+        # Initialize session state for gamification
+        if 'gamification_data' not in st.session_state:
+            st.session_state.gamification_data = {
+                "points": 0,
+                "badges": [],
+                "questions_asked": 0,
+                "subjects_explored": set(),
+                "facts_generated": 0,
+                "streak_days": 0,
+                "last_visit": datetime.now(),
+                "daily_visits": []
+            }
 
-    def award_points(self, action: str, multiplier: int = 1) -> int:
-        """Award points for specific actions"""
-        base_points = self.point_system.get(action, 0)
-        points_earned = base_points * multiplier
+    def add_points(self, points: int):
+        """Add points to user's total"""
+        st.session_state.gamification_data["points"] += points
+        self.check_achievements()
 
-        # Update session state
-        if 'user_points' not in st.session_state:
-            st.session_state.user_points = 0
-        st.session_state.user_points += points_earned
+    def get_total_points(self) -> int:
+        """Get total points earned"""
+        return st.session_state.gamification_data.get("points", 0)
 
-        return points_earned
+    def add_question(self):
+        """Record that a question was asked"""
+        st.session_state.gamification_data["questions_asked"] += 1
+        self.add_points(10)  # 10 points per question
 
-    def check_and_award_badges(self) -> List[Dict]:
-        """Check for new badges and award them"""
-        newly_earned = []
+    def add_subject_explored(self, subject: str):
+        """Record that a subject was explored"""
+        st.session_state.gamification_data["subjects_explored"].add(subject)
 
-        if 'user_badges' not in st.session_state:
-            st.session_state.user_badges = []
-
-        # Get current user stats
-        stats = self._get_user_stats()
-
-        for badge_id, badge_info in self.badge_definitions.items():
-            if badge_id not in st.session_state.user_badges:
-                if self._check_badge_criteria(badge_info["criteria"], stats):
-                    st.session_state.user_badges.append(badge_id)
-                    newly_earned.append({
-                        "id": badge_id,
-                        "name": badge_info["name"],
-                        "icon": badge_info["icon"],
-                        "description": badge_info["description"]
-                    })
-
-        return newly_earned
-
-    def _get_user_stats(self) -> Dict:
-        """Get current user statistics"""
-        return {
-            "questions_asked": st.session_state.get('questions_answered', 0),
-            "streak_days": st.session_state.get('streak_count', 0),
-            "correct_answers": st.session_state.get('correct_answers', 0),
-            "total_points": st.session_state.get('user_points', 0),
-            "topics_explored": st.session_state.get('topics_explored', 0),
-            "shares": st.session_state.get('knowledge_shares', 0)
-        }
-
-    def _check_badge_criteria(self, criteria: Dict, stats: Dict) -> bool:
-        """Check if badge criteria are met"""
-        for criterion, required_value in criteria.items():
-            if stats.get(criterion, 0) < required_value:
-                return False
-        return True
-
-    def get_user_badges(self) -> List[Dict]:
-        """Get user's earned badges"""
-        user_badge_ids = st.session_state.get('user_badges', [])
-        badges = []
-
-        for badge_id in user_badge_ids:
-            if badge_id in self.badge_definitions:
-                badge_info = self.badge_definitions[badge_id]
-                badges.append({
-                    "id": badge_id,
-                    "name": badge_info["name"],
-                    "icon": badge_info["icon"],
-                    "description": badge_info["description"]
-                })
-
-        return badges
-
-    def get_next_badges(self) -> List[Dict]:
-        """Get badges that are close to being earned"""
-        user_badge_ids = st.session_state.get('user_badges', [])
-        stats = self._get_user_stats()
-        next_badges = []
-
-        for badge_id, badge_info in self.badge_definitions.items():
-            if badge_id not in user_badge_ids:
-                progress = self._calculate_badge_progress(badge_info["criteria"], stats)
-                if progress > 0.3:  # Show badges that are at least 30% complete
-                    next_badges.append({
-                        "id": badge_id,
-                        "name": badge_info["name"],
-                        "icon": badge_info["icon"],
-                        "description": badge_info["description"],
-                        "progress": progress
-                    })
-
-        return sorted(next_badges, key=lambda x: x["progress"], reverse=True)[:3]
-
-    def _calculate_badge_progress(self, criteria: Dict, stats: Dict) -> float:
-        """Calculate progress toward earning a badge"""
-        if not criteria:
-            return 0.0
-
-        total_progress = 0
-        for criterion, required_value in criteria.items():
-            current_value = stats.get(criterion, 0)
-            progress = min(current_value / required_value, 1.0)
-            total_progress += progress
-
-        return total_progress / len(criteria)
+    def add_fact_generated(self):
+        """Record that a fact was generated"""
+        st.session_state.gamification_data["facts_generated"] += 1
+        self.add_points(5)  # 5 points per fact
 
     def update_streak(self):
         """Update daily learning streak"""
         today = datetime.now().date()
-        last_visit = st.session_state.get('last_visit_date')
+        last_visit = st.session_state.gamification_data.get("last_visit")
 
-        if last_visit:
-            last_date = datetime.strptime(last_visit, '%Y-%m-%d').date()
-            if today == last_date:
-                # Same day, no change
-                return
-            elif today == last_date + timedelta(days=1):
-                # Consecutive day, increase streak
-                st.session_state.streak_count = st.session_state.get('streak_count', 0) + 1
-            else:
-                # Break in streak, reset
-                st.session_state.streak_count = 1
+        if isinstance(last_visit, str):
+            last_visit = datetime.fromisoformat(last_visit).date()
+        elif isinstance(last_visit, datetime):
+            last_visit = last_visit.date()
         else:
-            # First visit
-            st.session_state.streak_count = 1
+            last_visit = today
 
-        st.session_state.last_visit_date = today.strftime('%Y-%m-%d')
+        daily_visits = st.session_state.gamification_data.get("daily_visits", [])
 
-        # Award daily login points
-        self.award_points("daily_login")
+        # Convert string dates back to date objects if needed
+        daily_visits = [
+            datetime.fromisoformat(d).date() if isinstance(d, str) else d
+            for d in daily_visits
+        ]
+
+        if today not in daily_visits:
+            daily_visits.append(today)
+            st.session_state.gamification_data["daily_visits"] = daily_visits
+
+            # Calculate streak
+            daily_visits.sort(reverse=True)
+            streak = 1
+            for i in range(1, len(daily_visits)):
+                if daily_visits[i-1] - daily_visits[i] == timedelta(days=1):
+                    streak += 1
+                else:
+                    break
+
+            st.session_state.gamification_data["streak_days"] = streak
+            st.session_state.gamification_data["last_visit"] = today
+
+    def check_achievements(self):
+        """Check and award new badges"""
+        data = st.session_state.gamification_data
+        current_badges = set(data.get("badges", []))
+        new_badges = []
+
+        # Check point-based badges
+        points = data.get("points", 0)
+        for badge_id, badge_info in self.badges.items():
+            if badge_id not in current_badges and points >= badge_info["points_required"]:
+                if badge_id.startswith("point_milestone"):
+                    current_badges.add(badge_id)
+                    new_badges.append(badge_id)
+
+        # Check first question badge
+        if "first_question" not in current_badges and data.get("questions_asked", 0) >= 1:
+            current_badges.add("first_question")
+            new_badges.append("first_question")
+
+        # Check question master badge
+        if "question_master" not in current_badges and data.get("questions_asked", 0) >= 10:
+            current_badges.add("question_master")
+            new_badges.append("question_master")
+
+        # Check daily learner badge
+        if "daily_learner" not in current_badges and data.get("streak_days", 0) >= 3:
+            current_badges.add("daily_learner")
+            new_badges.append("daily_learner")
+
+        # Check science explorer badge
+        if "science_explorer" not in current_badges and len(data.get("subjects_explored", set())) >= 3:
+            current_badges.add("science_explorer")
+            new_badges.append("science_explorer")
+
+        # Check fact collector badge
+        if "fact_collector" not in current_badges and data.get("facts_generated", 0) >= 5:
+            current_badges.add("fact_collector")
+            new_badges.append("fact_collector")
+
+        # Update badges in session state
+        st.session_state.gamification_data["badges"] = list(current_badges)
+
+        # Show notifications for new badges
+        if new_badges:
+            for badge_id in new_badges:
+                badge = self.badges[badge_id]
+                st.toast(f"🎉 New Badge: {badge['icon']} {badge['name']}")
+
+    def get_user_badges(self) -> List[Dict[str, Any]]:
+        """Get list of user's earned badges with details"""
+        earned_badge_ids = st.session_state.gamification_data.get("badges", [])
+        return [
+            {
+                "id": badge_id,
+                "name": self.badges[badge_id]["name"],
+                "description": self.badges[badge_id]["description"],
+                "icon": self.badges[badge_id]["icon"]
+            }
+            for badge_id in earned_badge_ids if badge_id in self.badges
+        ]
+
+    def get_available_badges(self) -> List[Dict[str, Any]]:
+        """Get list of badges not yet earned"""
+        earned_badge_ids = set(st.session_state.gamification_data.get("badges", []))
+        return [
+            {
+                "id": badge_id,
+                "name": badge_info["name"],
+                "description": badge_info["description"], 
+                "icon": badge_info["icon"],
+                "points_required": badge_info["points_required"]
+            }
+            for badge_id, badge_info in self.badges.items()
+            if badge_id not in earned_badge_ids
+        ]
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get comprehensive user statistics"""
+        data = st.session_state.gamification_data
+        return {
+            "points": data.get("points", 0),
+            "badges_count": len(data.get("badges", [])),
+            "questions_asked": data.get("questions_asked", 0),
+            "subjects_explored": len(data.get("subjects_explored", set())),
+            "facts_generated": data.get("facts_generated", 0),
+            "streak_days": data.get("streak_days", 0)
+        }
