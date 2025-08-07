@@ -1,174 +1,244 @@
 """
-LLM Handler for ScienceGPT
-Manages interactions with Groq API
+Enhanced LLM Handler for ScienceGPT
+Handles Groq API integration with improved caching and dynamic content generation
 """
 
 import streamlit as st
+import os
 from groq import Groq
+import hashlib
 import json
-import logging
-from typing import List, Dict, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+import time
 
 class LLMHandler:
-    """Handles all LLM-related operations using Groq API"""
+    """Enhanced LLM Handler with improved caching and dynamic content"""
 
     def __init__(self):
-        self.client = None
-        self.initialize_client()
+        """Initialize the LLM Handler"""
+        self.api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+        if not self.api_key:
+            st.error("GROQ_API_KEY not found in secrets or environment variables!")
+            st.stop()
 
-    def initialize_client(self):
-        """Initialize Groq client with API key from Streamlit secrets"""
+        self.client = Groq(api_key=self.api_key)
+        self.model = "mixtral-8x7b-32768"
+
+        # Initialize cache in session state
+        if 'llm_cache' not in st.session_state:
+            st.session_state.llm_cache = {}
+        if 'fact_cache' not in st.session_state:
+            st.session_state.fact_cache = {}
+
+    def _create_settings_hash(self, grade: int, subject: str, language: str, topic: str) -> str:
+        """Create a hash for the current settings combination"""
+        settings_string = f"{grade}-{subject}-{language}-{topic}"
+        return hashlib.md5(settings_string.encode()).hexdigest()
+
+    def _is_cache_valid(self, cache_key: str, cache_duration_hours: int = 24) -> bool:
+        """Check if cached content is still valid"""
+        if cache_key not in st.session_state.fact_cache:
+            return False
+
+        cache_entry = st.session_state.fact_cache[cache_key]
+        cache_time = cache_entry.get('timestamp', datetime.min)
+
+        if isinstance(cache_time, str):
+            cache_time = datetime.fromisoformat(cache_time)
+
+        return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
+
+    def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
+        """Generate dynamic question suggestions based on current settings"""
         try:
-            api_key = st.secrets.get("GROQ_API_KEY")
-            if not api_key:
-                st.error("GROQ_API_KEY not found in secrets. Please add it to your Streamlit secrets.")
-                return
+            # Create cache key based on settings
+            cache_key = self._create_settings_hash(grade, subject, language, topic)
 
-            self.client = Groq(api_key=api_key)
+            # Check if we need to generate new suggestions
+            if (st.session_state.last_settings_hash != cache_key or 
+                not st.session_state.cached_suggestions or
+                st.session_state.settings_applied):
+
+                # Reset the settings_applied flag
+                st.session_state.settings_applied = False
+
+                # Create the prompt for suggestions
+                topic_text = f" focusing on {topic}" if topic != "All Topics" else ""
+
+                prompt = f"""Generate 4 educational questions for Grade {grade} students studying {subject}{topic_text}.
+
+                Requirements:
+                - Questions must be in {language} language
+                - Age-appropriate for Grade {grade} students
+                - Related to {subject} curriculum
+                - Encourage curiosity and learning
+                - Mix different question types (factual, conceptual, analytical)
+
+                Return only the questions, one per line, without numbering or bullets."""
+
+                # Make API call
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are an educational assistant specialized in creating engaging questions for Indian students following NCERT curriculum."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=500
+                )
+
+                # Parse suggestions
+                suggestions_text = response.choices[0].message.content.strip()
+                suggestions = [q.strip() for q in suggestions_text.split('\n') if q.strip()]
+
+                # Cache the results
+                st.session_state.cached_suggestions = suggestions[:4]  # Ensure we have max 4
+                st.session_state.last_settings_hash = cache_key
+
+                return st.session_state.cached_suggestions
+            else:
+                # Return cached suggestions
+                return st.session_state.cached_suggestions
 
         except Exception as e:
-            st.error(f"Error initializing Groq client: {e}")
+            st.error(f"Error generating suggestions: {str(e)}")
+            return [
+                "What is the structure of an atom?",
+                "How do plants make their food?", 
+                "What causes the seasons to change?",
+                "Why is water important for living things?"
+            ]
 
-    def generate_response(self, prompt: str, context: Dict = None) -> str:
-        """Generate response from LLM based on prompt and context"""
+    def generate_fact_of_day(self, grade: int, subject: str, topic: str) -> Dict[str, Any]:
+        """Generate fact of the day with priority: Grade > Subject > Topic, Language always English"""
         try:
-            if not self.client:
-                return "Sorry, I'm having trouble connecting to the AI service. Please try again later."
+            # Create cache key for fact (language always English for facts)
+            cache_key = self._create_settings_hash(grade, subject, "English", topic)
 
-            # Build system prompt based on context
-            system_prompt = self._build_system_prompt(context or {})
+            # Check if we need to generate a new fact
+            if (not self._is_cache_valid(cache_key) or 
+                st.session_state.settings_applied):
 
-            chat_completion = self.client.chat.completions.create(
+                # Create the prompt for fact generation
+                topic_text = f" related to {topic}" if topic != "All Topics" else ""
+
+                prompt = f"""Generate an interesting and educational science fact for Grade {grade} students studying {subject}{topic_text}.
+
+                Requirements:
+                - Must be in English language (always)
+                - Age-appropriate for Grade {grade} students
+                - Related to {subject} curriculum
+                - Fascinating and memorable
+                - Include a brief explanation
+                - Should inspire curiosity
+
+                Format the response as:
+                Fact: [The interesting fact]
+                Explanation: [Brief 2-3 sentence explanation]"""
+
+                # Make API call
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are an educational assistant specialized in creating fascinating science facts for Indian students following NCERT curriculum."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.8,
+                    max_tokens=300
+                )
+
+                # Parse the fact
+                fact_text = response.choices[0].message.content.strip()
+
+                # Try to parse fact and explanation
+                lines = fact_text.split('\n')
+                fact = ""
+                explanation = ""
+
+                for line in lines:
+                    if line.startswith("Fact:"):
+                        fact = line.replace("Fact:", "").strip()
+                    elif line.startswith("Explanation:"):
+                        explanation = line.replace("Explanation:", "").strip()
+
+                # Fallback if parsing fails
+                if not fact:
+                    fact = fact_text.split('\n')[0]
+                if not explanation and len(lines) > 1:
+                    explanation = ' '.join(lines[1:])
+
+                # Create fact dictionary
+                fact_data = {
+                    "fact": fact,
+                    "explanation": explanation,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+                # Cache the result
+                st.session_state.fact_cache[cache_key] = fact_data
+
+                return fact_data
+            else:
+                # Return cached fact
+                return st.session_state.fact_cache[cache_key]
+
+        except Exception as e:
+            st.error(f"Error generating fact: {str(e)}")
+            return {
+                "fact": "The human brain contains approximately 86 billion neurons!",
+                "explanation": "Each neuron can connect to thousands of other neurons, creating an incredibly complex network that allows us to think, learn, and remember.",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> str:
+        """Generate response to student question"""
+        try:
+            # Create context-aware prompt
+            topic_context = f" with focus on {topic}" if topic != "All Topics" else ""
+
+            prompt = f"""You are an expert science teacher for Grade {grade} Indian students following NCERT curriculum.
+
+            Student Question: {question}
+
+            Context:
+            - Grade: {grade}
+            - Subject: {subject}
+            - Language: {language}
+            - Topic: {topic}
+
+            Please provide a comprehensive, age-appropriate answer in {language} language that:
+            1. Directly answers the student's question
+            2. Is appropriate for Grade {grade} level understanding
+            3. Relates to {subject}{topic_context}
+            4. Encourages further learning
+            5. Uses simple language and examples
+
+            Keep the response educational, engaging, and encouraging."""
+
+            response = self.client.chat.completions.create(
+                model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": f"You are a helpful science teacher for Grade {grade} students. Always respond in {language} language and keep explanations age-appropriate."},
                     {"role": "user", "content": prompt}
                 ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.7,
-                max_tokens=1024,
+                temperature=0.6,
+                max_tokens=1000
             )
 
-            return chat_completion.choices[0].message.content
+            return response.choices[0].message.content.strip()
 
         except Exception as e:
-            logging.error(f"Error generating LLM response: {e}")
-            return f"I'm sorry, I encountered an error: {e}. Please try again."
+            st.error(f"Error generating response: {str(e)}")
+            return f"I apologize, but I'm having trouble answering your question right now. Please try again or ask a different question about {subject}."
 
-    def generate_suggestions(self, context: Dict) -> List[str]:
-        """Generate dynamic suggestions based on context"""
-        try:
-            grade = context.get('grade', 3)
-            language = context.get('language', 'English')
-            subject = context.get('subject', 'General Science')
-            topic = context.get('topic', 'Basic Science')
+    def clear_suggestion_cache(self):
+        """Clear the suggestion cache to force regeneration"""
+        st.session_state.cached_suggestions = []
+        st.session_state.last_settings_hash = None
+        st.session_state.settings_applied = True
 
-            prompt = f"""Generate 4 engaging science question suggestions for:
-- Grade: {grade}
-- Language: {language}
-- Subject: {subject}
-- Topic: {topic}
-
-Make the suggestions:
-1. Age-appropriate for grade {grade} students
-2. Engaging and curiosity-driven
-3. Related to the Indian NCERT curriculum
-4. Interactive and educational
-
-Return as a JSON list of strings. Example:
-["What makes plants green?", "Why do magnets stick to some metals?"]"""
-
-            response = self.generate_response(prompt)
-
-            try:
-                # Try to parse JSON response
-                suggestions = json.loads(response)
-                if isinstance(suggestions, list):
-                    return suggestions[:4]  # Limit to 4 suggestions
-            except json.JSONDecodeError:
-                pass
-
-            # Fallback suggestions if JSON parsing fails
-            return self._get_fallback_suggestions(grade, subject)
-
-        except Exception as e:
-            logging.error(f"Error generating suggestions: {e}")
-            return self._get_fallback_suggestions(context.get('grade', 3), 
-                                               context.get('subject', 'General Science'))
-
-    def generate_daily_challenge(self, grade: int, subject: str, language: str) -> Dict:
-        """Generate a daily challenge question"""
-        try:
-            prompt = f"""Create a fun daily science challenge for grade {grade} students:
-- Subject: {subject}
-- Language: {language}
-- Make it engaging and educational
-- Include the question and a brief explanation
-- Make it appropriate for the Indian NCERT curriculum
-
-Return as JSON with keys: 'question', 'type' (fact/quiz), 'explanation', 'fun_factor'"""
-
-            response = self.generate_response(prompt)
-
-            try:
-                challenge = json.loads(response)
-                return challenge
-            except json.JSONDecodeError:
-                return self._get_fallback_challenge(grade, subject)
-
-        except Exception as e:
-            logging.error(f"Error generating daily challenge: {e}")
-            return self._get_fallback_challenge(grade, subject)
-
-    def _build_system_prompt(self, context: Dict) -> str:
-        """Build system prompt based on context"""
-        grade = context.get('grade', 3)
-        language = context.get('language', 'English')
-        subject = context.get('subject', 'General Science')
-
-        return f"""You are ScienceGPT, an AI science tutor for Indian students in grade {grade}.
-
-Key guidelines:
-- Respond in {language} language
-- Use age-appropriate language for grade {grade} students (ages {5+grade}-{6+grade})
-- Follow Indian NCERT curriculum standards
-- Make learning fun and engaging
-- Use simple examples from daily life
-- Be encouraging and supportive
-- Focus on {subject} concepts
-- Include interactive elements when possible
-- Promote scientific thinking and curiosity
-
-Always be helpful, educational, and inspiring!"""
-
-    def _get_fallback_suggestions(self, grade: int, subject: str) -> List[str]:
-        """Provide fallback suggestions when LLM fails"""
-        suggestions_by_grade = {
-            1: ["What colors do you see in a rainbow?", "Why do birds have feathers?", 
-                "What makes day and night?", "How do plants drink water?"],
-            2: ["Why do leaves change colors?", "What makes thunder sound?", 
-                "How do animals stay warm?", "Where does rain come from?"],
-            3: ["How do magnets work?", "Why do some things float?", 
-                "What makes plants green?", "How do we hear sounds?"],
-            4: ["Why do we see lightning before thunder?", "How do plants make food?", 
-                "What makes things hot or cold?", "How do animals breathe underwater?"],
-            5: ["How does electricity work?", "Why do objects fall down?", 
-                "What makes different materials?", "How do our eyes see colors?"],
-            6: ["How do chemical reactions happen?", "What makes living things different?", 
-                "How does light travel?", "Why do plants need sunlight?"],
-            7: ["How do acids and bases work?", "What controls our body functions?", 
-                "How do forces affect motion?", "How do organisms reproduce?"],
-            8: ["How do cells divide?", "What causes different sounds?", 
-                "How does friction affect movement?", "What makes materials conduct electricity?"]
-        }
-
-        return suggestions_by_grade.get(grade, suggestions_by_grade[3])
-
-    def _get_fallback_challenge(self, grade: int, subject: str) -> Dict:
-        """Provide fallback daily challenge"""
-        challenges = {
-            "question": f"Fun Science Fact: Did you know that a cloud weighs about a million tons? Despite this, clouds float because they are less dense than the air around them!",
-            "type": "fact",
-            "explanation": "This shows how density affects whether things sink or float - even in the sky!",
-            "fun_factor": "Amazing but true! ☁️"
-        }
-        return challenges
+    def clear_fact_cache(self):
+        """Clear the fact cache to force regeneration"""
+        st.session_state.fact_cache = {}
+        st.session_state.settings_applied = True
