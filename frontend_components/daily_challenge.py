@@ -1,178 +1,117 @@
 """
-Daily Challenge Component for ScienceGPT
-Displays daily science facts and quiz challenges
+Enhanced Daily Challenge Component for ScienceGPT
+Generates dynamic facts based on Grade > Subject > Language (English) > Topic
 """
 
 import streamlit as st
-from typing import Dict
 from datetime import datetime
-import hashlib
-from backend_code.llm_handler import LLMHandler
-from backend_code.curriculum_data import CurriculumData
-from backend_code.gamification import GamificationSystem
 
-class DailyChallenge:
-    """Manages daily challenges and fun facts"""
+def draw_daily_challenge():
+    """Draw the enhanced daily challenge with dynamic fact generation"""
+    st.markdown("### 🌟 Fun Fact of the Day")
 
-    def __init__(self, llm_handler: LLMHandler, curriculum_data: CurriculumData):
-        self.llm_handler = llm_handler
-        self.curriculum_data = curriculum_data
-        self.gamification = GamificationSystem()
+    # Get current settings from session state
+    grade = st.session_state.get('grade', 3)
+    subject = st.session_state.get('subject', 'General Science')
+    topic = st.session_state.get('topic', 'All Topics')
 
-    def display(self):
-        """Display the daily challenge section"""
-        st.markdown("### 🌟 Daily Science Challenge")
+    # Initialize LLM handler if not already done
+    if 'llm_handler' not in st.session_state:
+        from backend_code.llm_handler import LLMHandler
+        st.session_state.llm_handler = LLMHandler()
 
-        # Get today's challenge
-        challenge = self._get_daily_challenge()
+    llm_handler = st.session_state.llm_handler
 
-        # Display challenge in a styled container
+    # Generate fact based on current settings (Language always English for facts)
+    with st.spinner("Loading your personalized fact..."):
+        fact_data = llm_handler.generate_fact_of_day(grade, subject, topic)
+
+    # Display the fact
+    st.markdown("#### 🔬 Today's Discovery")
+
+    # Create an attractive container for the fact
+    with st.container():
         st.markdown(f"""
-        <div class="daily-challenge">
-            <h4>🎯 {challenge['type'].title()} of the Day</h4>
-            <p style="font-size: 1.1rem; margin: 1rem 0;"><strong>{challenge['question']}</strong></p>
-            <p style="color: #666;">{challenge['explanation']}</p>
-            <p style="font-style: italic; color: #4ecdc4;">{challenge.get('fun_factor', '')}</p>
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #1f77b4;">
+            <h5 style="margin: 0; color: #1f77b4;">💡 {fact_data['fact']}</h5>
         </div>
         """, unsafe_allow_html=True)
 
-        # Challenge interaction
-        self._display_challenge_interaction(challenge)
+        if fact_data.get('explanation'):
+            st.markdown("#### 📖 Learn More:")
+            st.markdown(fact_data['explanation'])
 
-    def _get_daily_challenge(self) -> Dict:
-        """Get or generate today's daily challenge"""
-        today = datetime.now().date().isoformat()
+    # Show the context for the fact
+    topic_text = topic if topic != "All Topics" else "General Topics"
+    st.markdown(f"*Grade {grade} • {subject} • {topic_text}*")
 
-        # Check if we already have today's challenge
-        if ('daily_challenge' in st.session_state and 
-            st.session_state.get('challenge_date') == today):
-            return st.session_state.daily_challenge
+    # Fact refresh button
+    if st.button("🔄 Get New Fact", help="Generate a new fact for current settings"):
+        # Clear the fact cache for current settings to force regeneration
+        llm_handler.clear_fact_cache()
+        st.rerun()
 
-        # Generate new challenge for today
-        # Use a simple hash of the date to ensure consistency
-        date_hash = int(hashlib.md5(today.encode()).hexdigest()[:8], 16)
+    # Display when the fact was generated
+    if 'timestamp' in fact_data:
+        try:
+            if isinstance(fact_data['timestamp'], str):
+                fact_time = datetime.fromisoformat(fact_data['timestamp'])
+            else:
+                fact_time = fact_data['timestamp']
 
-        # Select grade and subject based on user preference or random
-        default_grade = st.session_state.get('selected_grade', 5)
-        default_subject = st.session_state.get('selected_subject', 'General Science')
-        default_language = st.session_state.get('selected_language', 'English')
+            time_str = fact_time.strftime("%I:%M %p")
+            st.caption(f"Generated at {time_str}")
+        except:
+            pass
 
-        # Generate challenge using LLM
-        challenge = self.llm_handler.generate_daily_challenge(
-            grade=default_grade,
-            subject=default_subject,
-            language=default_language
-        )
+    # Daily challenge section
+    st.markdown("---")
+    st.markdown("### 🎯 Daily Challenge")
 
-        # Store in session state
-        st.session_state.daily_challenge = challenge
-        st.session_state.challenge_date = today
+    # Simple daily challenge based on current settings
+    challenge_questions = {
+        1: "Can you name 3 things you see around you that are living?",
+        2: "What makes plants green? Think about it!",
+        3: "How many bones do you think are in your body?",
+        4: "What happens to water when you heat it?",
+        5: "Why do we see different shapes of the moon?",
+        6: "What is the smallest unit of life?",
+        7: "How do magnets work?",
+        8: "What causes earthquakes?"
+    }
 
-        return challenge
+    challenge = challenge_questions.get(grade, "What's your favorite science topic and why?")
 
-    def _display_challenge_interaction(self, challenge: Dict):
-        """Display interactive elements for the challenge"""
-        challenge_type = challenge.get('type', 'fact')
+    st.markdown(f"**Today's Challenge for Grade {grade}:**")
+    st.info(challenge)
 
-        if challenge_type.lower() == 'quiz':
-            self._display_quiz_interaction(challenge)
-        else:
-            self._display_fact_interaction(challenge)
+    # Challenge completion tracking
+    if f"challenge_completed_{datetime.now().date()}" not in st.session_state:
+        if st.button("✅ I thought about it!", key="complete_challenge"):
+            st.session_state[f"challenge_completed_{datetime.now().date()}"] = True
+            if 'gamification' in st.session_state:
+                st.session_state.gamification.add_points(5)  # 5 points for daily challenge
+                st.session_state.points = st.session_state.gamification.get_total_points()
+            st.success("Great job! You earned 5 points! 🎉")
+            st.rerun()
+    else:
+        st.success("✅ Challenge completed for today!")
 
-    def _display_quiz_interaction(self, challenge: Dict):
-        """Display quiz-style interaction"""
-        col1, col2 = st.columns([2, 1])
+    # Learning tip
+    st.markdown("---")
+    st.markdown("### 💡 Learning Tip")
 
-        with col1:
-            # Simple answer input for quiz
-            user_answer = st.text_input(
-                "Your answer:",
-                placeholder="Type your answer here...",
-                key="daily_quiz_answer"
-            )
+    tips = [
+        "Ask 'why' and 'how' questions to understand science better!",
+        "Observe the world around you - science is everywhere!",
+        "Try simple experiments at home with adult supervision.",
+        "Read science books and watch educational videos.",
+        "Discuss what you learn with friends and family.",
+        "Keep a science journal to record interesting discoveries.",
+        "Don't be afraid to make mistakes - they help you learn!",
+        "Connect what you learn in school to real life examples."
+    ]
 
-        with col2:
-            if st.button("Submit Answer", type="primary", key="submit_daily_quiz"):
-                if user_answer.strip():
-                    self._handle_quiz_answer(user_answer, challenge)
-
-    def _display_fact_interaction(self, challenge: Dict):
-        """Display fact-style interaction"""
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            if st.button("🤔 Tell me more!", key="learn_more"):
-                self._show_more_info(challenge)
-
-        with col2:
-            if st.button("✨ I learned this!", key="mark_learned"):
-                self._mark_as_learned(challenge)
-
-        with col3:
-            if st.button("📚 Related Questions", key="related_q"):
-                self._show_related_questions(challenge)
-
-    def _handle_quiz_answer(self, answer: str, challenge: Dict):
-        """Handle quiz answer submission"""
-        # Award points for attempting
-        points = self.gamification.award_points("daily_challenge")
-
-        st.success(f"Great effort! You earned {points} points for participating in today's challenge! 🎉")
-
-        # Provide feedback (simplified - in real implementation, you'd check the answer)
-        st.info("🎓 Keep exploring science! Every question helps you learn something new.")
-
-        # Mark challenge as completed
-        st.session_state.daily_challenge_completed = True
-
-    def _mark_as_learned(self, challenge: Dict):
-        """Mark the daily fact as learned"""
-        points = self.gamification.award_points("daily_challenge")
-
-        st.success(f"Awesome! You earned {points} points for engaging with today's science fact! 🌟")
-        st.balloons()
-
-        # Update learning progress
-        if 'topics_explored' not in st.session_state:
-            st.session_state.topics_explored = 0
-        st.session_state.topics_explored += 1
-
-        st.session_state.daily_challenge_completed = True
-
-    def _show_more_info(self, challenge: Dict):
-        """Show more information about the daily fact"""
-        with st.expander("🔍 Learn More", expanded=True):
-            # Generate additional information
-            more_info_prompt = f"Provide more detailed, age-appropriate information about: {challenge['question']}"
-
-            with st.spinner("Getting more information..."):
-                additional_info = self.llm_handler.generate_response(more_info_prompt)
-
-            st.write(additional_info)
-
-            # Award points for curiosity
-            points = self.gamification.award_points("topic_exploration")
-            st.success(f"Curious mind! +{points} points for wanting to learn more! 🧠")
-
-    def _show_related_questions(self, challenge: Dict):
-        """Show related questions for further exploration"""
-        with st.expander("🤔 Related Questions", expanded=True):
-            st.write("Here are some related questions you might find interesting:")
-
-            # Generate related questions
-            related_prompt = f"Generate 3 related science questions suitable for students based on: {challenge['question']}"
-
-            with st.spinner("Generating related questions..."):
-                related_content = self.llm_handler.generate_response(related_prompt)
-
-            st.write(related_content)
-
-            st.info("💡 Click any of these questions in the main chat to explore further!")
-
-    def get_challenge_stats(self) -> Dict:
-        """Get statistics about daily challenge participation"""
-        return {
-            'completed_today': st.session_state.get('daily_challenge_completed', False),
-            'total_challenges': st.session_state.get('total_daily_challenges', 0),
-            'streak': st.session_state.get('daily_challenge_streak', 0)
-        }
+    import random
+    tip = random.choice(tips)
+    st.markdown(f"💭 *{tip}*")
