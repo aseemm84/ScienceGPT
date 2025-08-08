@@ -46,78 +46,6 @@ ScienceGPT/
 └── README.md                # This file
 ```
 
-## 🚀 Setup Instructions
-
-### Prerequisites
-- Python 3.8 or higher
-- Groq API account and API key
-
-### Local Development
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd ScienceGPT
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set up secrets**
-   Create `.streamlit/secrets.toml` file:
-   ```toml
-   GROQ_API_KEY = "your_groq_api_key_here"
-   ```
-
-4. **Run the application**
-   ```bash
-   streamlit run frontend.py
-   ```
-
-### Deployment on Streamlit Community Cloud
-
-1. **Fork this repository** to your GitHub account
-
-2. **Deploy on Streamlit Cloud**:
-   - Go to [share.streamlit.io](https://share.streamlit.io)
-   - Connect your GitHub repository
-   - Select the main file: `frontend.py`
-
-3. **Configure Secrets**:
-   - In the deployment settings, add your secrets:
-   ```toml
-   GROQ_API_KEY = "your_groq_api_key_here"
-   ```
-
-4. **Deploy**: Your app will be available at your Streamlit Cloud URL
-
-## 🎯 Usage Guide
-
-### For Students
-1. **Select your settings** in the sidebar:
-   - Choose your grade (1-8)
-   - Select preferred language
-   - Pick a science subject
-   - Optionally select a specific topic
-
-2. **Start learning**:
-   - Check out the daily science challenge
-   - Use suggested questions or ask your own
-   - Earn points and badges for engagement
-   - Track your learning progress
-
-3. **Explore features**:
-   - View your achievement badges
-   - Monitor your learning streak
-   - Explore different subjects and topics
-
-### For Educators
-- Monitor student engagement through built-in analytics
-- Use the comprehensive NCERT curriculum coverage
-- Encourage students with gamification features
-- Adapt content for different grade levels
 
 ## 🛠️ Technical Details
 
@@ -236,23 +164,6 @@ ScienceGPT/
 - **Assessment Tools**: Structured quizzes and tests
 - **Content Creation**: Teacher tools for custom content
 
-### Technical Improvements
-- Database integration for persistent user data
-- Advanced analytics and learning insights
-- Mobile app development
-- API rate limiting and optimization
-- Enhanced caching strategies
-
-## 📄 License
-
-This project is licensed under the MIT License. See LICENSE file for details.
-
-## 📞 Support & Contact
-
-For support, feature requests, or bug reports:
-- Create an issue on GitHub
-- Contact the development team
-- Check the documentation wiki
 
 ## 🙏 Acknowledgments
 
