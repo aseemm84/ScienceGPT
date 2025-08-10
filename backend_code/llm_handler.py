@@ -1,6 +1,6 @@
 """
 Enhanced LLM Handler for ScienceGPT
-Handles Groq API integration with improved caching and dynamic content generation
+Handles Groq API integration, YouTube video search, and dynamic content generation.
 """
 
 import streamlit as st
@@ -11,18 +11,33 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import time
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 class LLMHandler:
-    """Enhanced LLM Handler with improved caching and dynamic content"""
+    """Enhanced LLM Handler with YouTube integration, improved caching, and dynamic content"""
 
     def __init__(self):
         """Initialize the LLM Handler"""
-        self.api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
-        if not self.api_key:
+        self.groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+        self.youtube_api_key = st.secrets.get("YOUTUBE_API_KEY", os.getenv("YOUTUBE_API_KEY"))
+
+        if not self.groq_api_key:
             st.error("GROQ_API_KEY not found in secrets or environment variables!")
             st.stop()
+        
+        if not self.youtube_api_key:
+            st.warning("YOUTUBE_API_KEY not found. Video search will be disabled.")
+            self.youtube_service = None
+        else:
+            try:
+                self.youtube_service = build('youtube', 'v3', developerKey=self.youtube_api_key)
+            except Exception as e:
+                st.error(f"Failed to initialize YouTube service: {e}")
+                self.youtube_service = None
 
-        self.client = Groq(api_key=self.api_key)
+
+        self.client = Groq(api_key=self.groq_api_key)
         self.model = "llama-3.3-70b-versatile"
 
         # Initialize cache in session state
@@ -48,6 +63,35 @@ class LLMHandler:
             cache_time = datetime.fromisoformat(cache_time)
 
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
+
+    def search_youtube_video(self, query: str) -> Optional[str]:
+        """Search for a relevant YouTube video."""
+        if not self.youtube_service:
+            return None
+        
+        try:
+            search_response = self.youtube_service.search().list(
+                q=query,
+                part='snippet',
+                maxResults=1,
+                type='video',
+                videoCategoryId='27',  # Category for Education
+                relevanceLanguage='en' # Prioritize English content
+            ).execute()
+
+            results = search_response.get('items', [])
+            if not results:
+                return None
+
+            video_id = results[0]['id']['videoId']
+            return f"https://www.youtube.com/watch?v={video_id}"
+
+        except HttpError as e:
+            st.error(f"An HTTP error {e.resp.status} occurred during YouTube search: {e.content}")
+            return None
+        except Exception as e:
+            st.error(f"An error occurred during YouTube search: {e}")
+            return None
 
     def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
         """Generate dynamic question suggestions based on current settings"""
@@ -191,29 +235,26 @@ class LLMHandler:
                 "timestamp": datetime.now().isoformat()
             }
 
-    def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> str:
-        """Generate response to student question"""
+    def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> Dict[str, Optional[str]]:
+        """Generate response to student question and find a relevant YouTube video."""
+        response_text = ""
+        video_url = None
         try:
-            # Create context-aware prompt
+            # 1. Generate text response
             topic_context = f" with focus on {topic}" if topic != "All Topics" else ""
-
             prompt = f"""You are an expert science teacher for Grade {grade} Indian students following NCERT curriculum.
-
             Student Question: {question}
-
             Context:
             - Grade: {grade}
             - Subject: {subject}
             - Language: {language}
             - Topic: {topic}
-
             Please provide a comprehensive, age-appropriate answer in {language} language that:
             1. Directly answers the student's question
             2. Is appropriate for Grade {grade} level understanding
             3. Relates to {subject}{topic_context}
             4. Encourages further learning
             5. Uses simple language and examples
-
             Keep the response educational, engaging, and encouraging."""
 
             response = self.client.chat.completions.create(
@@ -225,12 +266,18 @@ class LLMHandler:
                 temperature=0.6,
                 max_tokens=1000
             )
+            response_text = response.choices[0].message.content.strip()
 
-            return response.choices[0].message.content.strip()
+            # 2. Search for a YouTube video
+            video_search_query = f"educational video for grade {grade} {subject} {topic}: {question}"
+            video_url = self.search_youtube_video(video_search_query)
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
-            return f"I apologize, but I'm having trouble answering your question right now. Please try again or ask a different question about {subject}."
+            response_text = f"I apologize, but I'm having trouble answering your question right now. Please try again or ask a different question about {subject}."
+        
+        return {"text": response_text, "video_url": video_url}
+
 
     def clear_suggestion_cache(self):
         """Clear the suggestion cache to force regeneration"""
