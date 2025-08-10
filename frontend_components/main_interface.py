@@ -1,6 +1,6 @@
 """
 Enhanced Main Interface for ScienceGPT
-Handles chat interface, dynamic question suggestions, and video display.
+Handles chat interface, dynamic question suggestions, and video display with summaries.
 """
 
 import streamlit as st
@@ -31,7 +31,6 @@ def draw_main_interface():
     st.markdown(f"*Based on Grade {grade} {subject} in {language}*")
 
     col1, col2 = st.columns(2)
-    # Use a session state variable to hold input from buttons
     if "user_input" not in st.session_state:
         st.session_state.user_input = None
 
@@ -45,57 +44,59 @@ def draw_main_interface():
     st.markdown("---")
     st.markdown("### 💬 Chat with ScienceGPT")
 
-    # Initialize and display chat messages
     if 'messages' not in st.session_state:
         st.session_state.messages = []
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant" and "video_url" in message and message["video_url"]:
+            if message["role"] == "assistant" and message.get("video_url"):
                 st.markdown("---")
                 st.markdown("##### 📺 Recommended Video")
                 st.video(message["video_url"])
+                if message.get("video_summary"):
+                    with st.expander("View Video Summary"):
+                        st.markdown(message["video_summary"])
 
     # Process input from either a button click or the chat input box
     prompt = st.chat_input(f"Ask your {subject} question in {language}...")
     if st.session_state.user_input:
         prompt = st.session_state.user_input
-        st.session_state.user_input = None  # Reset after use
+        st.session_state.user_input = None
 
-    # Main logic block to handle a new prompt
     if prompt:
-        # Add user message to history and display it
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Display the user's message immediately
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Generate and display assistant response
         with st.chat_message("assistant"):
-            with st.spinner("Thinking and finding a relevant video..."):
+            with st.spinner("Thinking, finding the best video, and summarizing..."):
                 response_data = llm_handler.generate_response(
                     prompt, grade, subject, language, topic
                 )
                 response_text = response_data.get("text", "Sorry, I encountered an error.")
                 video_url = response_data.get("video_url")
+                video_summary = response_data.get("video_summary")
 
                 st.markdown(response_text)
                 if video_url:
                     st.markdown("---")
                     st.markdown("##### 📺 Recommended Video")
                     st.video(video_url)
+                    if video_summary:
+                        with st.expander("View Video Summary"):
+                            st.markdown(video_summary)
 
-        # Add assistant message to history
-        assistant_message = {"role": "assistant", "content": response_text, "video_url": video_url}
+        assistant_message = {
+            "role": "assistant", 
+            "content": response_text, 
+            "video_url": video_url,
+            "video_summary": video_summary
+        }
         st.session_state.messages.append(assistant_message)
 
-        # Update gamification stats
         if 'gamification' in st.session_state:
-            # This single call handles points, achievements, and question count
             st.session_state.gamification.add_question()
         
-        # Rerun to clear the input box and reflect the new state
         st.rerun()
-
