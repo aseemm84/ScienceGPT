@@ -66,7 +66,7 @@ class LLMHandler:
             return None
         
         try:
-            search_query = f"educational video for grade {grade} {subject}: {question}"
+            search_query = f"educational video for {subject}: {question}"
             search_response = self.youtube_service.search().list(
                 q=search_query,
                 part='snippet',
