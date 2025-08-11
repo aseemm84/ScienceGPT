@@ -61,7 +61,6 @@ class LLMHandler:
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
 
     def search_and_select_video(self, question: str, grade: int, subject: str) -> Optional[Dict[str, str]]:
-        """Searches for top videos and uses an LLM to select the best one."""
         if not self.youtube_service:
             return None
         
