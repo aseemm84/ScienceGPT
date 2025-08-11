@@ -78,7 +78,7 @@ class LLMHandler:
 
             videos = search_response.get('items', [])
             if not videos:
-                return None
+                return "No relevant video found."
 
             video_options = [
                 {
