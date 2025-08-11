@@ -63,7 +63,7 @@ class LLMHandler:
     def search_and_select_video(self, question: str, grade: int, subject: str) -> Optional[Dict[str, str]]:
         """Searches for top videos and uses an LLM to select the best one."""
         if not self.youtube_service:
-            return None
+            return "No Service API"
         
         try:
             search_query = f"educational video for grade {grade} {subject}: {question}"
@@ -78,7 +78,7 @@ class LLMHandler:
 
             videos = search_response.get('items', [])
             if not videos:
-                return None
+                return "No Videos"
 
             video_options = {
                 video['id']['videoId']: {
