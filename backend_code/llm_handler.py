@@ -61,59 +61,88 @@ class LLMHandler:
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
 
     def search_and_select_video(self, question: str, grade: int, subject: str) -> Optional[Dict[str, str]]:
-        """Searches for top videos and uses an LLM to select the best one."""
-        if not self.youtube_service:
-            return None
-        
-        try:
-            search_query = f"educational video for {subject}: {question}"
-            search_response = self.youtube_service.search().list(
-                q=search_query,
-                part='snippet',
-                maxResults=5,
-                type='video',
-                videoCategoryId='27',
-                relevanceLanguage='en'
-            ).execute()
+        """Searches for top videos and uses an LLM to select the best one."""
+        if not self.youtube_service:
+            return None
+        
+        try:
+            search_query = f"educational video for grade {grade} {subject}: {question}"
+            search_response = self.youtube_service.search().list(
+                q=search_query,
+                part='snippet',
+                maxResults=5,
+                type='video',
+                videoCategoryId='27',
+                relevanceLanguage='en'
+            ).execute()
 
-            videos = search_response.get('items', [])
-            if not videos:
-                return "No relevant video found."
+            videos = search_response.get('items', [])
+            if not videos:
+                return None
 
-            video_options = [
-                {
-                    "id": video['id']['videoId'],
-                    "title": video['snippet']['title'],
-                    "description": video['snippet']['description']
-                }
-                for video in videos
-            ]
+            video_options = {
+                video['id']['videoId']: {
+                    "id": video['id']['videoId'],
+                    "title": video['snippet']['title'],
+                    "description": video['snippet']['description']
+                }
+                for video in videos
+            }
+            
+            # Create a simplified list for the prompt
+            prompt_video_list = [f"- ID: {v['id']}, Title: {v['title']}" for v in video_options.values()]
+            prompt_video_text = "\n".join(prompt_video_list)
 
-            selection_prompt = f"""
-            From the following list of YouTube videos, select the one that is most relevant and appropriate for a Grade {grade} student who asked this question: "{question}"
 
-            Here are the video options:
-            {json.dumps(video_options, indent=2)}
+            selection_prompt = f"""
+            From the following list of YouTube videos, select the one that is most relevant and appropriate for a Grade {grade} student who asked this question: "{question}"
 
-            Analyze the titles and descriptions to make your choice. Return ONLY the JSON object of the best video. For example: {json.dumps(video_options[0])}
-            """
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert at selecting relevant educational videos."},
-                    {"role": "user", "content": selection_prompt}
-                ],
-                temperature=0.2
-            )
-            
-            selected_video_json = response.choices[0].message.content.strip()
-            selected_video = json.loads(selected_video_json)
-            return selected_video
+            Here are the video options:
+            {prompt_video_text}
 
-        except Exception as e:
-            st.error(f"An error occurred during video selection: {e}")
-            return None
+            Analyze the titles to make your choice. Return ONLY the ID of the best video and nothing else. For example: qzbnR1-rO5k
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert at selecting relevant educational videos. You will only return the video ID."},
+                    {"role": "user", "content": selection_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=20 # A video ID is short
+            )
+            
+            response_text = response.choices[0].message.content.strip()
+            
+            # Use regex to find a YouTube video ID in the response, making it more robust
+            match = re.search(r'[\w-]{11}', response_text)
+            if match:
+                selected_id = match.group(0)
+                if selected_id in video_options:
+                    return video_options[selected_id]
+
+            # Fallback: if regex fails, just check if any ID is in the response
+            for video_id in video_options.keys():
+                if video_id in response_text:
+                    return video_options[video_id]
+            
+            # If no match, default to the first video
+            return list(video_options.values())[0]
+
+
+        except Exception as e:
+            st.error(f"An error occurred during video selection: {e}")
+            # Fallback to returning the first video if an error occurs
+            if 'videos' in locals() and videos:
+                 return {
+                    "id": videos[0]['id']['videoId'],
+                    "title": videos[0]['snippet']['title'],
+                    "description": videos[0]['snippet']['description']
+                }
+            return None
+
+
 
     def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
         """Generates a summary for a video using its transcript or description."""
