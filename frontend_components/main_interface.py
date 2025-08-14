@@ -54,9 +54,9 @@ def draw_main_interface():
                 st.markdown("---")
                 st.markdown("##### 📺 Recommended Video")
                 st.video(message["video_url"])
-                if message.get("video_summary"):
-                    with st.expander("View Video Summary"):
-                        st.markdown(message["video_summary"])
+                #if message.get("video_summary"):
+                 #   with st.expander("View Video Summary"):
+                  #      st.markdown(message["video_summary"])
 
     # Process input from either a button click or the chat input box
     prompt = st.chat_input(f"Ask your {subject} question in {language}...")
@@ -77,16 +77,16 @@ def draw_main_interface():
                 )
                 response_text = response_data.get("text", "Sorry, I encountered an error.")
                 video_url = response_data.get("video_url")
-                video_summary = response_data.get("video_summary")
+                #video_summary = response_data.get("video_summary")
 
                 st.markdown(response_text)
                 if video_url:
                     st.markdown("---")
                     st.markdown("##### 📺 Recommended Video")
                     st.video(video_url)
-                    if video_summary:
-                        with st.expander("View Video Summary"):
-                            st.markdown(video_summary)
+                    #if video_summary:
+                     #   with st.expander("View Video Summary"):
+                      #      st.markdown(video_summary)
 
         assistant_message = {
             "role": "assistant", 
