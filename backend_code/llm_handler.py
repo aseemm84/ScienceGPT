@@ -40,7 +40,7 @@ class LLMHandler:
                 self.youtube_service = None
 
         self.client = Groq(api_key=self.groq_api_key)
-        self.model = "llama3-8b-8192"
+        self.model = "llama-3.1-8b-instant"
         
         # Language mapping for the new translator library
         self.lang_map = {
