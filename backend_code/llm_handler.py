@@ -39,7 +39,7 @@ class LLMHandler:
                 self.youtube_service = None
 
         self.client = Groq(api_key=self.groq_api_key)
-        self.model = "llama-3.1-8b-instant"  
+        self.model = "llama3-8b-8192"  # Upgraded model for better performance
 
         if 'llm_cache' not in st.session_state:
             st.session_state.llm_cache = {}
@@ -88,17 +88,14 @@ class LLMHandler:
             return None
         
         try:
-            # Translate the question to English for better search results
             english_question = self._translate_for_search(question, language)
-
-            # More specific search query using the English translation
             search_query = f"educational video for grade {grade} {subject} {topic}: {english_question}"
             search_response = self.youtube_service.search().list(
                 q=search_query,
                 part='snippet',
                 maxResults=5,
                 type='video',
-                videoCategoryId='27', # Education category
+                videoCategoryId='27',
                 relevanceLanguage='en'
             ).execute()
 
@@ -118,17 +115,11 @@ class LLMHandler:
             prompt_video_list = [f"- ID: {v['id']}, Title: {v['title']}" for v in video_options.values()]
             prompt_video_text = "\n".join(prompt_video_list)
 
-            # Improved prompt with more context
             selection_prompt = f"""
-            You are an expert at selecting relevant educational videos for Indian students.
-            A Grade {grade} student, studying the topic '{topic}' in the subject '{subject}', asked: "{english_question}"
-
-            From the following list of YouTube videos, select the ONE that is most relevant and appropriate.
-            Analyze the titles carefully to make your choice. Return ONLY the ID of the best video and nothing else.
-
+            A Grade {grade} student, studying '{topic}' in '{subject}', asked: "{english_question}"
+            From the following list, select the ONE most relevant video. Return ONLY its ID.
             Video Options:
             {prompt_video_text}
-            
             Best Video ID:
             """
             
@@ -150,20 +141,11 @@ class LLMHandler:
                 if selected_id in video_options:
                     return video_options[selected_id]
 
-            for video_id in video_options.keys():
-                if video_id in response_text:
-                    return video_options[video_id]
-            
             return list(video_options.values())[0]
 
         except Exception as e:
             st.error(f"An error occurred during video selection: {e}")
-            if 'videos' in locals() and videos:
-                 return {
-                    "id": videos[0]['id']['videoId'],
-                    "title": videos[0]['snippet']['title'],
-                    "description": videos[0]['snippet']['description']
-                }
+            return None
 
     def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
         """Generates a summary for a video using its transcript or description."""
@@ -178,14 +160,9 @@ class LLMHandler:
             content_to_summarize = video_description
 
         if not content_to_summarize:
-            return "No summary could be generated for this video."
+            return "No summary could be generated."
 
-        summary_prompt = f"""
-        Based on the following content, please provide a concise, 2-3 sentence summary suitable for a young student.
-
-        Content:
-        {content_to_summarize[:2000]}
-        """
+        summary_prompt = f"Summarize the following for a young student in 2-3 sentences:\n\n{content_to_summarize[:2000]}"
         
         try:
             response = self.client.chat.completions.create(
@@ -194,8 +171,8 @@ class LLMHandler:
                     {"role": "system", "content": "You are an expert at summarizing educational content for students."},
                     {"role": "user", "content": summary_prompt}
                 ],
-                temperature=0.2,
-                max_tokens=100
+                temperature=0.5,
+                max_tokens=150
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -209,32 +186,24 @@ class LLMHandler:
         video_summary = None
         
         try:
-            # This new system prompt instructs the model on how to behave if it struggles with a language.
-            # It forces the model to attempt an answer rather than apologize.
             system_prompt = f"""
-            You are ScienceGPT, an expert science teacher for Indian students, with a helpful and knowledgeable persona.
-            The user is a Grade {grade} student. Your explanations must be simple and age-appropriate for this grade level.
-            The user asked you a question {question} about the topic {topic} for grade {grade} level {subject}.
+            You are ScienceGPT, an expert science teacher for Indian students.
+            The user is a Grade {grade} student. Your explanations must be simple and age-appropriate.
 
             **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
 
-            **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
-            1.  Your first attempt should always be to answer directly and accurately in {language}.
-            2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
-                a.  Translate the user's question {question} into English.
-                b.  Formulate a detailed, accurate answer in English based on your knowledge.
-                c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
-            3.  You will then present ONLY the final, translated answer to the user in {language}.
+            **INTERNAL THOUGHT PROCESS:**
+            1.  Attempt to answer directly and accurately in {language}.
+            2.  If you cannot, translate the user's question to English, formulate the answer in English, and then translate the final answer back into {language}.
+            3.  Present ONLY the final, translated answer to the user in {language}.
 
-            **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
+            **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid scientific answer.
             """
 
             user_prompt = f"""
-            Student Question: {question}
-            Context:
-            - Subject: {subject}
-            - Topic: {topic}
-            Please provide a comprehensive answer following all rules.
+            Student Question: "{question}"
+            Context: Subject - {subject}, Topic - {topic}
+            Provide a comprehensive answer following all rules.
             """
 
             response = self.client.chat.completions.create(
@@ -243,16 +212,16 @@ class LLMHandler:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,
-                max_tokens=1500 # Increased token limit for potentially complex internal translation
+                temperature=0.6,
+                max_tokens=1500
             )
             response_text = response.choices[0].message.content.strip()
 
-            # Fallback in case of a completely empty response from the API
             if not response_text:
                 response_text = f"I am currently having trouble processing this request in {language}. Please try rephrasing your question."
 
-            selected_video = self.search_and_select_video(question, grade, subject, topic)
+            # **BUG FIX**: Pass all required arguments to the function
+            selected_video = self.search_and_select_video(question, grade, subject, topic, language)
             
             if selected_video:
                 video_id = selected_video['id']
@@ -284,7 +253,7 @@ class LLMHandler:
                         {"role": "system", "content": f"You are an educational assistant creating questions for Indian students. You must respond in {language}."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.4,
+                    temperature=0.7,
                     max_tokens=500
                 )
 
@@ -323,7 +292,7 @@ class LLMHandler:
                         {"role": "system", "content": "You are an educational assistant specialized in creating fascinating science facts for Indian students."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.3,
+                    temperature=0.8,
                     max_tokens=300
                 )
 
