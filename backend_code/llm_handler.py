@@ -198,8 +198,7 @@ class LLMHandler:
             Your user is a Grade {grade} student. Your explanations must be simple and age-appropriate for grade {grade} level.
             
             
-            
-            **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
+            You MUST answer the user's question in their chosen language: {language}.**
             Student Question: {question}
             Context:
             - Grade: {grade}
@@ -213,16 +212,13 @@ class LLMHandler:
             4. Encourages further learning
             5. Uses simple language and examples
             Keep the response educational, engaging, and encouraging.
+            **STEPS TO FOLLOW:**
 
-
-            **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
-            1.  Your first attempt should always be to answer directly and accurately in {language}.
-            2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
-                a.  Translate the user's question into English.
-                b.  Formulate a detailed, accurate answer in English based on your knowledge.
-                c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
-            3.  You will then present ONLY the final, translated answer to the user in {language}.
-
+            1. Translate the user's question {question} into English.
+            2. Formulate a detailed, accurate answer in English based on your knowledge.
+            3. Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
+            4. You will then present ONLY the final, translated answer to the user in {language}.
+            
             **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
             """
 
