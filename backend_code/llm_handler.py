@@ -225,7 +225,7 @@ class LLMHandler:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.4,
+                temperature=0.3,
                 max_tokens=1500 # Increased token limit for potentially complex internal translation
             )
             response_text = response.choices[0].message.content.strip()
@@ -243,7 +243,7 @@ class LLMHandler:
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
-            response_text = f"An unexpected error occurred. Please try again."
+            response_text = f"I'm presently having trouble providing a response in {language} for {question}."
         
         return {"text": response_text, "video_url": video_url, "video_summary": video_summary}
 
