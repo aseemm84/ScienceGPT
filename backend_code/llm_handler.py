@@ -157,7 +157,7 @@ class LLMHandler:
                     {"role": "system", "content": "You are an expert at summarizing educational content for students."},
                     {"role": "user", "content": summary_prompt}
                 ],
-                temperature=0.5,
+                temperature=0.2,
                 max_tokens=150
             )
             return response.choices[0].message.content.strip()
@@ -198,7 +198,7 @@ class LLMHandler:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.6,
+                temperature=0.2,
                 max_tokens=1500
             )
             english_response = response.choices[0].message.content.strip()
@@ -249,7 +249,7 @@ class LLMHandler:
                         {"role": "system", "content": f"You are an educational assistant creating questions for Indian students. You must respond in {language}."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.7,
+                    temperature=0.3,
                     max_tokens=500
                 )
 
@@ -288,7 +288,7 @@ class LLMHandler:
                         {"role": "system", "content": "You are an educational assistant specialized in creating fascinating science facts for Indian students."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.8,
+                    temperature=0.2,
                     max_tokens=300
                 )
 
