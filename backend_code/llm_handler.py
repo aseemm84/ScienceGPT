@@ -39,7 +39,7 @@ class LLMHandler:
                 self.youtube_service = None
 
         self.client = Groq(api_key=self.groq_api_key)
-        self.model = "llama3-8b-8192"  # Upgraded model for better performance
+        self.model = "llama-3.1-8b-instant"  # Upgraded model for better performance
 
         if 'llm_cache' not in st.session_state:
             st.session_state.llm_cache = {}
