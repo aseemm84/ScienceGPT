@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import time
+import re
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
@@ -38,7 +39,7 @@ class LLMHandler:
                 self.youtube_service = None
 
         self.client = Groq(api_key=self.groq_api_key)
-        self.model = "meta-llama/llama-4-scout-17b-16e-instruct"
+        self.model = "llama3-8b-8192"  # Using a more recent and capable model
 
         if 'llm_cache' not in st.session_state:
             st.session_state.llm_cache = {}
@@ -60,25 +61,26 @@ class LLMHandler:
             cache_time = datetime.fromisoformat(cache_time)
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
 
-    def search_and_select_video(self, question: str, grade: int, subject: str) -> Optional[Dict[str, str]]:
-        """Searches for top videos and uses an LLM to select the best one."""
+    def search_and_select_video(self, question: str, grade: int, subject: str, topic: str) -> Optional[Dict[str, str]]:
+        """Searches for top videos and uses an LLM to select the best one with improved context."""
         if not self.youtube_service:
-            return "No Service API"
+            return None
         
         try:
-            search_query = f"educational video for grade {grade} {subject}: {question}"
+            # More specific search query
+            search_query = f"educational video for grade {grade} {subject} {topic}: {question}"
             search_response = self.youtube_service.search().list(
                 q=search_query,
                 part='snippet',
                 maxResults=5,
                 type='video',
-                videoCategoryId='27',
+                videoCategoryId='27', # Education category
                 relevanceLanguage='en'
             ).execute()
 
             videos = search_response.get('items', [])
             if not videos:
-                return "No Videos"
+                return None
 
             video_options = {
                 video['id']['videoId']: {
@@ -89,18 +91,16 @@ class LLMHandler:
                 for video in videos
             }
             
-            # Create a simplified list for the prompt
             prompt_video_list = [f"- ID: {v['id']}, Title: {v['title']}" for v in video_options.values()]
             prompt_video_text = "\n".join(prompt_video_list)
 
-
+            # Improved prompt with more context
             selection_prompt = f"""
             You are an expert at selecting relevant educational videos for Indian students.
             A Grade {grade} student, studying the topic '{topic}' in the subject '{subject}', asked: "{question}"
 
             From the following list of YouTube videos, select the ONE that is most relevant and appropriate.
             Analyze the titles carefully to make your choice. Return ONLY the ID of the best video and nothing else.
-            For example: qzbnR1-rO5k
 
             Video Options:
             {prompt_video_text}
@@ -115,30 +115,25 @@ class LLMHandler:
                     {"role": "user", "content": selection_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=20 # A video ID is short
+                max_tokens=20
             )
             
             response_text = response.choices[0].message.content.strip()
             
-            # Use regex to find a YouTube video ID in the response, making it more robust
             match = re.search(r'[\w-]{11}', response_text)
             if match:
                 selected_id = match.group(0)
                 if selected_id in video_options:
                     return video_options[selected_id]
 
-            # Fallback: if regex fails, just check if any ID is in the response
             for video_id in video_options.keys():
                 if video_id in response_text:
                     return video_options[video_id]
             
-            # If no match, default to the first video
             return list(video_options.values())[0]
-
 
         except Exception as e:
             st.error(f"An error occurred during video selection: {e}")
-            # Fallback to returning the first video if an error occurs
             if 'videos' in locals() and videos:
                  return {
                     "id": videos[0]['id']['videoId'],
@@ -151,13 +146,12 @@ class LLMHandler:
         """Generates a summary for a video using its transcript or description."""
         content_to_summarize = ""
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi'])
             transcript_text = " ".join([item['text'] for item in transcript_list])
             content_to_summarize = transcript_text
         except (NoTranscriptFound, TranscriptsDisabled):
             content_to_summarize = video_description
-        except Exception as e:
-            st.warning(f"Could not fetch transcript for video {video_id}: {e}")
+        except Exception:
             content_to_summarize = video_description
 
         if not content_to_summarize:
@@ -177,7 +171,7 @@ class LLMHandler:
                     {"role": "system", "content": "You are an expert at summarizing educational content for students."},
                     {"role": "user", "content": summary_prompt}
                 ],
-                temperature=0.3,
+                temperature=0.5,
                 max_tokens=150
             )
             return response.choices[0].message.content.strip()
@@ -198,22 +192,25 @@ class LLMHandler:
             You are ScienceGPT, an expert science teacher for Indian students, with a helpful and knowledgeable persona.
             The user is a Grade {grade} student. Your explanations must be simple and age-appropriate for this grade level.
 
-            **STEPS TO BE FOLLOWED (Follow these steps):**
-            1. You will perform the following steps internally, without showing them to the user:
-                a.  If the user-selected language {language} is not English, translate the user's question {question} into English.
-                b.  Formulate a detailed, accurate answer in English based on your knowledge. The answer must be appropriate for a grade {grade} level student and the selected topic {topic}.
+            **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
+
+            **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
+            1.  Your first attempt should always be to answer directly and accurately in {language}.
+            2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
+                a.  Translate the user's question into English.
+                b.  Formulate a detailed, accurate answer in English based on your knowledge.
                 c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
-            2.  You will then present ONLY the final, translated answer to the user in {language}.
-            
-            
-        """
+            3.  You will then present ONLY the final, translated answer to the user in {language}.
+
+            **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
+            """
 
             user_prompt = f"""
-            Student Question: {question}
+            Student Question: "{question}"
             Context:
             - Subject: {subject}
             - Topic: {topic}
-            Please provide a comprehensive answer following all steps.
+            Please provide a comprehensive answer following all rules.
             """
 
             response = self.client.chat.completions.create(
@@ -222,7 +219,7 @@ class LLMHandler:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3,
+                temperature=0.6,
                 max_tokens=1500 # Increased token limit for potentially complex internal translation
             )
             response_text = response.choices[0].message.content.strip()
@@ -240,10 +237,9 @@ class LLMHandler:
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
-            response_text = f"I'm presently having trouble providing a response in {language} for {question}."
+            response_text = f"An unexpected error occurred. Please try again."
         
         return {"text": response_text, "video_url": video_url, "video_summary": video_summary}
-
 
     def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
         """Generate dynamic question suggestions based on current settings"""
@@ -254,19 +250,14 @@ class LLMHandler:
                 st.session_state.settings_applied):
                 st.session_state.settings_applied = False
                 topic_text = f" focusing on {topic}" if topic != "All Topics" else ""
-                prompt = f"""Generate 4 educational questions for Grade {grade} students studying {subject}{topic_text}.
-                Requirements:
-                - Questions must be in {language} language
-                - Age-appropriate for Grade {grade} students
-                - Related to {subject} curriculum
-                - Encourage curiosity and learning
-                - Mix different question types (factual, conceptual, analytical)
+                prompt = f"""Generate 4 educational questions for a Grade {grade} student studying {subject}{topic_text}.
+                The questions must be in {language}.
                 Return only the questions, one per line, without numbering or bullets."""
 
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are an educational assistant specialized in creating engaging questions for Indian students following NCERT curriculum."},
+                        {"role": "system", "content": f"You are an educational assistant creating questions for Indian students. You must respond in {language}."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
@@ -296,14 +287,8 @@ class LLMHandler:
             if (not self._is_cache_valid(cache_key) or 
                 st.session_state.settings_applied):
                 topic_text = f" related to {topic}" if topic != "All Topics" else ""
-                prompt = f"""Generate an interesting and educational science fact for Grade {grade} students studying {subject}{topic_text}.
-                Requirements:
-                - Must be in English language (always)
-                - Age-appropriate for Grade {grade} students
-                - Related to {subject} curriculum
-                - Fascinating and memorable
-                - Include a brief explanation
-                - Should inspire curiosity
+                prompt = f"""Generate an interesting and educational science fact for a Grade {grade} student studying {subject}{topic_text}.
+                The fact must be in English.
                 Format the response as:
                 Fact: [The interesting fact]
                 Explanation: [Brief 2-3 sentence explanation]"""
@@ -311,7 +296,7 @@ class LLMHandler:
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "You are an educational assistant specialized in creating fascinating science facts for Indian students following NCERT curriculum."},
+                        {"role": "system", "content": "You are an educational assistant specialized in creating fascinating science facts for Indian students."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.8,
@@ -339,7 +324,7 @@ class LLMHandler:
                 st.session_state.fact_cache[cache_key] = fact_data
                 return fact_data
             else:
-                return st.session_state.fact_cache[cache_key]
+                return st.session_state.fact_cache[key]
         except Exception as e:
             st.error(f"Error generating fact: {str(e)}")
             return {
