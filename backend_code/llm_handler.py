@@ -138,7 +138,7 @@ class LLMHandler:
         """Generate response with a robust, self-correcting prompt to ensure a valid answer."""
         response_text = ""
         video_url = None
-        video_summary = None
+        
         
         try:
             lang_code = self.lang_map.get(language, 'en')
