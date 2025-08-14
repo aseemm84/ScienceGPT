@@ -200,13 +200,12 @@ class LLMHandler:
 
             **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
 
-            **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
-            1.  Your first attempt should always be to answer directly and accurately in {language}.
-            2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
-                a.  Translate the user's question into English.
-                b.  Formulate a detailed, accurate answer in English based on your knowledge.
+            **STEPS TO BE FOLLOWED (Follow these steps):**
+            1. You will perform the following steps internally, without showing them to the user:
+                a.  Translate the user's question {question} about the topic {topic} into English.
+                b.  Formulate a detailed, accurate answer in English based on your knowledge. The answer must be appropriate for grade {grade} level student.
                 c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
-            3.  You will then present ONLY the final, translated answer to the user in {language}.
+            2.  You will then present ONLY the final, translated answer to the user in {language}.
 
             **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
             """
