@@ -1,6 +1,6 @@
 # ScienceGPT - AI-Powered Science Learning Tool
 
-ScienceGPT is an interactive science education platform designed specifically for Indian students in grades 1-8. It follows the NCERT curriculum and uses AI to provide personalized learning experiences with gamification elements.
+ScienceGPT is an interactive science education platform designed specifically for Indian students in grades 1-12. It follows the NCERT curriculum and uses AI to provide personalized learning experiences with gamification elements.
 
 ## 🌟 Features
 
