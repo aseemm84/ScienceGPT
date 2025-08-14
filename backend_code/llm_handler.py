@@ -15,6 +15,7 @@ import re
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+from googletrans import Translator, LANGUAGES
 
 class LLMHandler:
     """Enhanced LLM Handler with intelligent YouTube search, summarization, improved caching, and dynamic content"""
@@ -39,7 +40,8 @@ class LLMHandler:
                 self.youtube_service = None
 
         self.client = Groq(api_key=self.groq_api_key)
-        self.model = "llama-3.1-8b-instant"  # Upgraded model for better performance
+        self.model = "llama3-8b-8192"
+        self.translator = Translator()
 
         if 'llm_cache' not in st.session_state:
             st.session_state.llm_cache = {}
@@ -61,34 +63,12 @@ class LLMHandler:
             cache_time = datetime.fromisoformat(cache_time)
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
 
-    def _translate_for_search(self, question: str, language: str) -> str:
-        """Translates the user's question to English for a more effective YouTube search."""
-        if language.lower() == 'english':
-            return question
-
-        try:
-            translation_prompt = f"Translate the following text to English: \"{question}\""
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a translation assistant. Provide only the translated text."},
-                    {"role": "user", "content": translation_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=200
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            st.warning(f"Could not translate question for video search: {e}")
-            return question # Fallback to original question
-
-    def search_and_select_video(self, question: str, grade: int, subject: str, topic: str, language: str) -> Optional[Dict[str, str]]:
-        """Searches for top videos and uses an LLM to select the best one with improved context."""
+    def search_and_select_video(self, english_question: str, grade: int, subject: str, topic: str) -> Optional[Dict[str, str]]:
+        """Searches for top videos using an English question and uses an LLM to select the best one."""
         if not self.youtube_service:
             return None
         
         try:
-            english_question = self._translate_for_search(question, language)
             search_query = f"educational video for grade {grade} {subject} {topic}: {english_question}"
             search_response = self.youtube_service.search().list(
                 q=search_query,
@@ -186,25 +166,23 @@ class LLMHandler:
         video_summary = None
         
         try:
+            # --- Step 1: Translate the user's question to English using googletrans ---
+            english_question = question
+            if language.lower() != 'english':
+                try:
+                    english_question = self.translator.translate(question, src=language.lower(), dest='en').text
+                except Exception as e:
+                    st.warning(f"Could not translate question for processing: {e}")
+                    english_question = question
+
+            # --- Step 2: Generate the main response in English ---
             system_prompt = f"""
             You are ScienceGPT, an expert science teacher for Indian students.
             The user is a Grade {grade} student. Your explanations must be simple and age-appropriate.
-
-            **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
-
-            **INTERNAL THOUGHT PROCESS:**
-            1.  Attempt to answer directly and accurately in {language}.
-            2.  If you cannot, translate the user's question to English, formulate the answer in English, and then translate the final answer back into {language}.
-            3.  Present ONLY the final, translated answer to the user in {language}.
-
-            **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid scientific answer.
+            You MUST provide a valid, relevant scientific answer.
             """
 
-            user_prompt = f"""
-            Student Question: "{question}"
-            Context: Subject - {subject}, Topic - {topic}
-            Provide a comprehensive answer following all rules.
-            """
+            user_prompt = f"Provide a comprehensive answer in English for the question '{english_question}'."
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -215,13 +193,23 @@ class LLMHandler:
                 temperature=0.6,
                 max_tokens=1500
             )
-            response_text = response.choices[0].message.content.strip()
+            english_response = response.choices[0].message.content.strip()
+
+            # --- Step 3: Translate the English response back to the user's language ---
+            if language.lower() != 'english':
+                try:
+                    response_text = self.translator.translate(english_response, src='en', dest=language.lower()).text
+                except Exception as e:
+                    st.warning(f"Could not translate response back to {language}: {e}")
+                    response_text = english_response # Fallback to English response
+            else:
+                response_text = english_response
 
             if not response_text:
                 response_text = f"I am currently having trouble processing this request in {language}. Please try rephrasing your question."
 
-            # **BUG FIX**: Pass all required arguments to the function
-            selected_video = self.search_and_select_video(question, grade, subject, topic, language)
+            # --- Step 4: Search for a video using the English question ---
+            selected_video = self.search_and_select_video(english_question, grade, subject, topic)
             
             if selected_video:
                 video_id = selected_video['id']
