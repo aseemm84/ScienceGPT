@@ -141,4 +141,6 @@ ScienceGPT/
 **Built with ❤️ by Aseem Mehrotra for Indian students and educators**
 
 *Empowering the next generation of scientists and innovators through AI-powered education*
+
+
 <https://www.linkedin.com/in/aseem-mehrotra/>
