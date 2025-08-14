@@ -1,133 +1,99 @@
 """
 Enhanced Sidebar Component for ScienceGPT
-Handles grade, language, subject, and topic selection with dynamic updates
+Handles grade, language, subject, and topic selection with dynamic updates for Grades 1-12.
 """
 
 import streamlit as st
 from backend_code.curriculum_data import CurriculumData
 
 def draw_sidebar():
-    """Draw the enhanced sidebar with dynamic content updates"""
+    """Draw the enhanced sidebar with dynamic content updates."""
     st.title("🧪 ScienceGPT")
     st.markdown("*AI-Powered Science Learning*")
 
-    # Initialize curriculum data
+    # Instantiate the curriculum data handler
     curriculum = CurriculumData()
 
-    # Current settings display
     st.markdown("### 📚 Learning Settings")
 
-    # Grade selection
+    # Grade selection for Grades 1-12
+    all_grades = curriculum.get_all_grades()
+    # Default to Grade 8 (index 7) if not set
+    grade_index = all_grades.index(st.session_state.get('grade', 8)) 
     grade = st.selectbox(
         "Select Grade:",
-        options=list(range(1, 9)),
-        index=2,  # Default to grade 3
+        options=all_grades,
+        index=grade_index,
         key="grade_selector"
     )
 
     # Language selection
     languages = curriculum.get_languages()
+    language_index = languages.index(st.session_state.get('language', 'English'))
     language = st.selectbox(
         "Select Language:",
         options=languages,
-        index=languages.index("English") if "English" in languages else 0,
+        index=language_index,
         key="language_selector"
     )
 
-    # Subject selection
+    # Subject selection - dynamically updates based on grade
     subjects = curriculum.get_subjects_for_grade(grade)
+    current_subject = st.session_state.get('subject')
+    # If the current subject is not valid for the new grade, default to the first one
+    subject_index = subjects.index(current_subject) if current_subject in subjects else 0
     subject = st.selectbox(
         "Select Subject:",
         options=subjects,
-        index=subjects.index("General Science") if "General Science" in subjects else 0,
+        index=subject_index,
         key="subject_selector"
     )
 
-    # Topic selection
+    # Topic selection - dynamically updates based on grade and subject
     topics = curriculum.get_topics_for_grade_subject(grade, subject)
+    topic_options = ["All Topics"] + topics
+    current_topic = st.session_state.get('topic')
+    topic_index = topic_options.index(current_topic) if current_topic in topic_options else 0
     topic = st.selectbox(
         "Select Topic:",
-        options=["All Topics"] + topics,
-        index=0,
+        options=topic_options,
+        index=topic_index,
         key="topic_selector"
     )
 
-    # Apply Settings Button - This is the key enhancement
     st.markdown("---")
     if st.button("🔄 Apply Settings", type="primary", use_container_width=True):
-        # Update session state with new settings
-        old_settings = (st.session_state.get('grade', 3), 
-                       st.session_state.get('subject', 'General Science'),
-                       st.session_state.get('language', 'English'),
-                       st.session_state.get('topic', 'All Topics'))
+        # Check if settings have changed before applying
+        if (grade != st.session_state.get('grade') or
+            language != st.session_state.get('language') or
+            subject != st.session_state.get('subject') or
+            topic != st.session_state.get('topic')):
+            
+            # Update session state
+            st.session_state.grade = grade
+            st.session_state.language = language
+            st.session_state.subject = subject
+            st.session_state.topic = topic
 
-        new_settings = (grade, subject, language, topic)
-
-        # Update session state
-        st.session_state.grade = grade
-        st.session_state.language = language
-        st.session_state.subject = subject
-        st.session_state.topic = topic
-
-        # Check if settings actually changed
-        if old_settings != new_settings:
-            # Clear caches to force regeneration of suggestions and facts
+            # Clear caches to force regeneration of dynamic content
             if 'llm_handler' in st.session_state:
                 st.session_state.llm_handler.clear_suggestion_cache()
                 st.session_state.llm_handler.clear_fact_cache()
 
-            # Set flag to indicate settings were applied
             st.session_state.settings_applied = True
-
-            # Show success message
-            st.success("✅ Settings applied! New suggestions and fact will be generated.")
-
-            # Trigger rerun to update content
+            st.success("✅ Settings applied!")
             st.rerun()
         else:
             st.info("Settings are already up to date!")
 
-    # Show current settings
+    # Display current settings
     st.markdown("#### 📋 Current Settings:")
-    current_grade = st.session_state.get('grade', grade)
-    current_language = st.session_state.get('language', language)
-    current_subject = st.session_state.get('subject', subject)
-    current_topic = st.session_state.get('topic', topic)
-
     st.markdown(f"""
-    - **Grade:** {current_grade}
-    - **Language:** {current_language}
-    - **Subject:** {current_subject}
-    - **Topic:** {current_topic}
+    - **Grade:** {st.session_state.get('grade', grade)}
+    - **Language:** {st.session_state.get('language', language)}
+    - **Subject:** {st.session_state.get('subject', subject)}
+    - **Topic:** {st.session_state.get('topic', topic)}
     """)
 
-    # Progress summary
     st.markdown("---")
-    st.markdown("#### 📈 Progress Summary")
-
-    points = st.session_state.get('points', 0)
-    streak = st.session_state.get('streak', 0)
-    badges_count = len(st.session_state.get('badges', []))
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Points", points)
-        st.metric("Streak", f"{streak} days")
-    with col2:
-        st.metric("Badges", badges_count)
-        questions_asked = len([msg for msg in st.session_state.get('messages', []) if msg.get('role') == 'user'])
-        st.metric("Questions", questions_asked)
-
-    # Quick tips
-    st.markdown("---")
-    st.markdown("#### 💡 Quick Tips")
-    st.markdown("""
-    - Use **Apply Settings** to refresh suggestions and facts
-    - Ask questions to earn points and badges
-    - Visit daily to maintain your learning streak
-    - Explore different topics to broaden your knowledge
-    """)
-
-    # Version info
-    st.markdown("---")
-    st.markdown("*ScienceGPT v2.0 - Enhanced*")
+    st.markdown("*ScienceGPT v3.0 - High School Edition*")
