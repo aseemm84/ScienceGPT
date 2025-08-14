@@ -325,7 +325,7 @@ class LLMHandler:
                 st.session_state.fact_cache[cache_key] = fact_data
                 return fact_data
             else:
-                return st.session_state.fact_cache[key]
+                return st.session_state.fact_cache[cache_key]
         except Exception as e:
             st.error(f"Error generating fact: {str(e)}")
             return {
