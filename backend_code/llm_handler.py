@@ -200,21 +200,20 @@ class LLMHandler:
 
             **STEPS TO BE FOLLOWED (Follow these steps):**
             1. You will perform the following steps internally, without showing them to the user:
-                a.  If the user-selected language {language} is not English, translate the user's question {question} about the topic {topic} into English.
-                b.  Formulate a detailed, accurate answer in English based on your knowledge. The answer must be appropriate for grade {grade} level student.
+                a.  If the user-selected language {language} is not English, translate the user's question {question} into English.
+                b.  Formulate a detailed, accurate answer in English based on your knowledge. The answer must be appropriate for a grade {grade} level student and the selected topic {topic}.
                 c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
             2.  You will then present ONLY the final, translated answer to the user in {language}.
             
-            **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
-            **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
-            """
+            
+        """
 
             user_prompt = f"""
-            Student Question: "{question}"
+            Student Question: {question}
             Context:
             - Subject: {subject}
             - Topic: {topic}
-            Please provide a comprehensive answer following all rules.
+            Please provide a comprehensive answer following all steps.
             """
 
             response = self.client.chat.completions.create(
