@@ -186,70 +186,67 @@ class LLMHandler:
             return None
 
     def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> Dict[str, Optional[str]]:
-        """Generate response, find and summarize a relevant YouTube video."""
+        """Generate response with a robust, self-correcting prompt to ensure a valid answer."""
         response_text = ""
         video_url = None
         video_summary = None
         
         try:
-            # 1. Generate text response
-            topic_context = f" with focus on {topic}" if topic != "All Topics" else ""
-            prompt = f"""You are ScienceGPT, an expert science teacher for Grade {grade} Indian students (following NCERT curriculum), with a helpful and knowledgeable persona.
-            Your user is a Grade {grade} student. Your explanations must be simple and age-appropriate for grade {grade} level.
-            
-            Student Question: {question}
-            Context:
-            - Grade: {grade}
-            - Subject: {subject}
-            - Language: {language}
-            - Topic: {topic}
-            
-            **STEPS TO FOLLOW:**
+            # This new system prompt instructs the model on how to behave if it struggles with a language.
+            # It forces the model to attempt an answer rather than apologize.
+            system_prompt = f"""
+            You are ScienceGPT, an expert science teacher for Indian students, with a helpful and knowledgeable persona.
+            The user is a Grade {grade} student. Your explanations must be simple and age-appropriate for this grade level.
 
-            1. Translate the user's question {question} into English.
-            2. Formulate a detailed, accurate answer in English based on your knowledge.
-            3. Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
-            4. You will then present ONLY the final, translated answer to the user in {language}.
+            **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
 
-            You MUST answer the user's question in their chosen language: {language}.**
+            **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
+            1.  Your first attempt should always be to answer directly and accurately in {language}.
+            2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
+                a.  Translate the user's question into English.
+                b.  Formulate a detailed, accurate answer in English based on your knowledge.
+                c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
+            3.  You will then present ONLY the final, translated answer to the user in {language}.
 
-            Please provide a comprehensive, age-appropriate answer in {language} language that:
-            1. Directly answers the student's question
-            2. Is appropriate for the Grade {grade} level understanding
-            3. Relates to {subject}{topic}
-            4. Encourages further learning
-            5. Uses simple language and examples
-            Keep the response educational, engaging, and encouraging.
-            
             **CRITICAL RULE: NEVER apologize or state that you cannot answer.** You must always provide a valid, relevant scientific answer based on the user's question, grade, and subject, by following the process above. Your final output to the user must only be the answer in {language}.
+            """
+
+            user_prompt = f"""
+            Student Question: "{question}"
+            Context:
+            - Subject: {subject}
+            - Topic: {topic}
+            Please provide a comprehensive answer following all rules.
             """
 
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": f"You are a helpful science teacher for Grade {grade} students. Always respond in {language} language and keep explanations age-appropriate."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.3,
-                max_tokens=1000
+                temperature=0.4,
+                max_tokens=1500 # Increased token limit for potentially complex internal translation
             )
             response_text = response.choices[0].message.content.strip()
 
-            # 2. Find and select the best video
-            selected_video = self.search_and_select_video(question, grade, subject)
+            # Fallback in case of a completely empty response from the API
+            if not response_text:
+                response_text = f"I am currently having trouble processing this request in {language}. Please try rephrasing your question."
+
+            selected_video = self.search_and_select_video(question, grade, subject, topic)
             
             if selected_video:
                 video_id = selected_video['id']
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
-                
-                # 3. Generate video summary
                 video_summary = self.get_video_summary(video_id, selected_video['description'])
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
-            response_text = f"I apologize, but I'm having trouble answering your question right now. Please try again or ask a different question about {subject}."
+            response_text = f"An unexpected error occurred. Please try again."
         
         return {"text": response_text, "video_url": video_url, "video_summary": video_summary}
+
 
     def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
         """Generate dynamic question suggestions based on current settings"""
