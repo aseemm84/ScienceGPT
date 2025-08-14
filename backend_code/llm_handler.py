@@ -195,7 +195,7 @@ class LLMHandler:
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
-            response_text = f"An unexpected error occurred. Please try again."
+            response_text = f"An unexpected error occurred. Please try again. {str(e)}"
         
         return {"text": response_text, "video_url": video_url, "video_summary": video_summary}
 
