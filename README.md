@@ -5,10 +5,13 @@ ScienceGPT is an interactive science education platform designed specifically fo
 ## 🌟 Features
 
 ### 🎓 Educational Features
-- **NCERT Curriculum Aligned**: Complete coverage of Indian science curriculum for grades 1-8
-- **Multi-language Support**: Available in Hindi, English, Marathi, Gujarati, Tamil, Kannada, Telugu, Malayalam, Bengali, and Punjabi
-- **AI-Powered Responses**: Intelligent answers tailored to student's grade level and subject
-- **Interactive Learning**: Dynamic question suggestions based on user selections
+* **Grade-Specific Curriculum (1-12)**: Covers a wide range of topics in Physics, Chemistry, and Biology tailored for each grade.
+* **Multi-language Support**: Learn in English, Hindi, and several other regional Indian languages.
+* **Interactive Explanations**: Get clear, age-appropriate answers to your science questions.
+* **AI-Powered Video Recommendations**: Finds and summarizes relevant YouTube videos for visual learning.
+* **Gamification**: Earn points, unlock badges, and maintain a learning streak to make learning fun.
+* **Daily Challenges**: Tackle new facts and questions every day to build a habit.
+* **Progress Tracking**: Monitor your learning journey across different subjects and topics.
 
 ### 🎮 Gamification Elements
 - **Points System**: Earn points for asking questions, completing challenges, and daily engagement
@@ -58,7 +61,7 @@ ScienceGPT/
 - Handles daily challenge generation
 
 #### Curriculum Data (`curriculum_data.py`)
-- Complete NCERT science curriculum for grades 1-8
+- Complete NCERT science curriculum for grades 1-12
 - Subject and topic organization by grade level
 - Multi-language support framework
 - Structured data access methods
@@ -101,22 +104,6 @@ ScienceGPT/
 - Bonus points and engagement rewards
 - Related content suggestions
 
-## 🎨 Customization Options
-
-### Adding New Languages
-1. Update the `languages` list in `curriculum_data.py`
-2. Modify the system prompt in `llm_handler.py` to support the new language
-3. Test the LLM's capability in the new language
-
-### Adding New Badges
-1. Define badge criteria in `gamification.py`
-2. Add badge checking logic
-3. Update the UI display in `gamification_ui.py`
-
-### Extending Curriculum
-1. Add new subjects/topics to `curriculum_data.py`
-2. Update grade-level mappings
-3. Test with appropriate age-level content
 
 ## 🔐 Security Considerations
 
@@ -132,19 +119,6 @@ ScienceGPT/
 - Modular loading of components
 - Efficient API call management
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/new-feature`)
-3. Commit changes (`git commit -am 'Add new feature'`)
-4. Push to branch (`git push origin feature/new-feature`)
-5. Create a Pull Request
-
-### Development Guidelines
-- Follow PEP 8 style guidelines
-- Add docstrings to all functions and classes
-- Write unit tests for new functionality
-- Update documentation for new features
 
 ## 🐛 Known Issues & Limitations
 
@@ -152,29 +126,19 @@ ScienceGPT/
 - LLM response quality depends on Groq API availability
 - Limited to text-based interactions (no image processing)
 - Progress data is session-based (resets on browser refresh)
-
-## 🔮 Future Enhancements
-
-### Planned Features
-- **Offline Mode**: Cached responses for common questions
-- **Image Support**: Visual science diagrams and explanations
-- **Voice Input**: Speech-to-text question input
-- **Collaborative Learning**: Multi-user sessions and competitions
-- **Parent Dashboard**: Progress reports and learning insights
-- **Assessment Tools**: Structured quizzes and tests
-- **Content Creation**: Teacher tools for custom content
-
+- Free Groq API is used, so API calls are constrained to token per minute and per day limits
 
 ## 🙏 Acknowledgments
 
 - **NCERT**: For the comprehensive curriculum guidelines
-- **Groq**: For the powerful AI API
+- **Groq**: For the powerful free AI API
 - **Streamlit**: For the excellent web app framework
 - **Indian Education System**: For inspiring this educational tool
 - **Open Source Community**: For the various libraries and tools used
 
 ---
 
-**Built with ❤️ for Indian students and educators**
+**Built with ❤️ by Aseem Mehrotra for Indian students and educators**
 
 *Empowering the next generation of scientists and innovators through AI-powered education*
+<https://www.linkedin.com/in/aseem-mehrotra/>
