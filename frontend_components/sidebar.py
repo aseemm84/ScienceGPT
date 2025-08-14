@@ -111,10 +111,10 @@ def draw_sidebar():
     )
     
     st.markdown(
-        "<div style='text-align: center; font-size: 0.8rem; color: #ccc;'><i>ScienceGPT v3.1</i></div>",
+        "<div style='text-align: center; font-size: 0.8rem; color: #ccc;'><i>ScienceGPT v1.0</i></div>",
         unsafe_allow_html=True
     )
 
     
     st.markdown("---")
-    st.markdown("*ScienceGPT v3.0 - High School Edition*")
+    st.markdown("*ScienceGPT v1.0 - High School Edition*")
