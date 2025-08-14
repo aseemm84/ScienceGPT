@@ -95,12 +95,17 @@ class LLMHandler:
 
 
             selection_prompt = f"""
-            From the following list of YouTube videos, select the one that is most relevant and appropriate for a Grade {grade} student who asked this question: "{question}"
+            You are an expert at selecting relevant educational videos for Indian students.
+            A Grade {grade} student, studying the topic '{topic}' in the subject '{subject}', asked: "{question}"
 
-            Here are the video options:
+            From the following list of YouTube videos, select the ONE that is most relevant and appropriate.
+            Analyze the titles carefully to make your choice. Return ONLY the ID of the best video and nothing else.
+            For example: qzbnR1-rO5k
+
+            Video Options:
             {prompt_video_text}
-
-            Analyze the titles to make your choice. Return ONLY the ID of the best video and nothing else. For example: qzbnR1-rO5k
+            
+            Best Video ID:
             """
             
             response = self.client.chat.completions.create(
@@ -190,6 +195,8 @@ class LLMHandler:
             # 1. Generate text response
             topic_context = f" with focus on {topic}" if topic != "All Topics" else ""
             prompt = f"""You are an expert science teacher for Grade {grade} Indian students following NCERT curriculum.
+            Your user is in Grade {grade}.
+            You MUST respond in the user's chosen language: **{language}**.
             Student Question: {question}
             Context:
             - Grade: {grade}
@@ -198,7 +205,7 @@ class LLMHandler:
             - Topic: {topic}
             Please provide a comprehensive, age-appropriate answer in {language} language that:
             1. Directly answers the student's question
-            2. Is appropriate for Grade {grade} level understanding
+            2. Is appropriate for the Grade {grade} level understanding
             3. Relates to {subject}{topic_context}
             4. Encourages further learning
             5. Uses simple language and examples
