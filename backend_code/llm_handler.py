@@ -177,7 +177,7 @@ class LLMHandler:
                     {"role": "system", "content": "You are an expert at summarizing educational content for students."},
                     {"role": "user", "content": summary_prompt}
                 ],
-                temperature=0.5,
+                temperature=0.3,
                 max_tokens=150
             )
             return response.choices[0].message.content.strip()
@@ -230,7 +230,7 @@ class LLMHandler:
                     {"role": "system", "content": f"You are a helpful science teacher for Grade {grade} students. Always respond in {language} language and keep explanations age-appropriate."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.6,
+                temperature=0.3,
                 max_tokens=1000
             )
             response_text = response.choices[0].message.content.strip()
