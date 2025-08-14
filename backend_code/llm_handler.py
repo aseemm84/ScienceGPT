@@ -15,7 +15,7 @@ import re
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-from googletrans import Translator, LANGUAGES
+from deep_translator import GoogleTranslator
 
 class LLMHandler:
     """Enhanced LLM Handler with intelligent YouTube search, summarization, improved caching, and dynamic content"""
@@ -41,7 +41,13 @@ class LLMHandler:
 
         self.client = Groq(api_key=self.groq_api_key)
         self.model = "llama3-8b-8192"
-        self.translator = Translator()
+        
+        # Language mapping for the new translator library
+        self.lang_map = {
+            "English": "en", "Hindi": "hi", "Marathi": "mr", "Gujarati": "gu",
+            "Tamil": "ta", "Kannada": "kn", "Telugu": "te", "Malayalam": "ml",
+            "Bengali": "bn", "Punjabi": "pa"
+        }
 
         if 'llm_cache' not in st.session_state:
             st.session_state.llm_cache = {}
@@ -166,11 +172,13 @@ class LLMHandler:
         video_summary = None
         
         try:
-            # --- Step 1: Translate the user's question to English using googletrans ---
+            lang_code = self.lang_map.get(language, 'en')
+
+            # --- Step 1: Translate the user's question to English using deep-translator ---
             english_question = question
-            if language.lower() != 'english':
+            if lang_code != 'en':
                 try:
-                    english_question = self.translator.translate(question, src=language.lower(), dest='en').text
+                    english_question = GoogleTranslator(source='auto', target='en').translate(question)
                 except Exception as e:
                     st.warning(f"Could not translate question for processing: {e}")
                     english_question = question
@@ -196,9 +204,9 @@ class LLMHandler:
             english_response = response.choices[0].message.content.strip()
 
             # --- Step 3: Translate the English response back to the user's language ---
-            if language.lower() != 'english':
+            if lang_code != 'en':
                 try:
-                    response_text = self.translator.translate(english_response, src='en', dest=language.lower()).text
+                    response_text = GoogleTranslator(source='en', target=lang_code).translate(english_response)
                 except Exception as e:
                     st.warning(f"Could not translate response back to {language}: {e}")
                     response_text = english_response # Fallback to English response
