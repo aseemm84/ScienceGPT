@@ -191,13 +191,13 @@ class LLMHandler:
             if selected_video:
                 video_id = selected_video['id']
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
-                video_summary = self.get_video_summary(video_id, selected_video['description'])
+                #video_summary = self.get_video_summary(video_id, selected_video['description'])
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
             response_text = f"An unexpected error occurred. Please try again. {str(e)}"
         
-        return {"text": response_text, "video_url": video_url, "video_summary": video_summary}
+        return {"text": response_text, "video_url": video_url}
 
     def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
         """Generate dynamic question suggestions based on current settings"""
