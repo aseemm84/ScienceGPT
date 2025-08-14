@@ -126,7 +126,7 @@ ScienceGPT/
 - LLM response quality depends on Groq API availability
 - Limited to text-based interactions (no image processing)
 - Progress data is session-based (resets on browser refresh)
-- Free Groq API is used, so API calls are constrained to token per minute and per day limits
+- Free Groq API is used. API calls are constrained to a token per minute and per day limit, requests per minute and per day limit.
 
 ## 🙏 Acknowledgments
 
