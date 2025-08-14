@@ -92,7 +92,7 @@ def draw_main_interface():
             "role": "assistant", 
             "content": response_text, 
             "video_url": video_url,
-            "video_summary": video_summary
+            #"video_summary": video_summary
         }
         st.session_state.messages.append(assistant_message)
 
