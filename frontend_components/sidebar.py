@@ -95,5 +95,26 @@ def draw_sidebar():
     - **Topic:** {st.session_state.get('topic', topic)}
     """)
 
+
+     # Personal Branding Section
+    st.markdown("---")
+    st.markdown(
+        """
+        <div style="text-align: center; padding: 10px 0;">
+            Made with <span style="color: #e25555;">❤️</span> by 
+            <a href="https://www.linkedin.com/in/aseem-mehrotra/" target="_blank" style="color: #a7b5ff; text-decoration: none; font-weight: 600;">
+                Aseem Mehrotra
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    st.markdown(
+        "<div style='text-align: center; font-size: 0.8rem; color: #ccc;'><i>ScienceGPT v3.1</i></div>",
+        unsafe_allow_html=True
+    )
+
+    
     st.markdown("---")
     st.markdown("*ScienceGPT v3.0 - High School Edition*")
