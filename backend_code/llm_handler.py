@@ -190,7 +190,7 @@ class LLMHandler:
             You MUST provide a valid, relevant scientific answer.
             """
 
-            user_prompt = f"Provide a comprehensive answer in English for the question '{english_question}'."
+            user_prompt = f"Provide a comprehensive answer in English for the question '{english_question}' about {topic} in subject {subject} for grade {grade} level."
 
             response = self.client.chat.completions.create(
                 model=self.model,
