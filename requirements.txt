@@ -3,6 +3,7 @@ streamlit>=1.28.0
 groq>=0.4.0
 google-api-python-client>=2.0.0
 youtube-transcript-api>=0.6.2
+googletrans==4.0.0-rc1
 
 # Data handling
 pandas>=1.5.0
