@@ -133,7 +133,7 @@ class LLMHandler:
             st.error(f"An error occurred during video selection: {e}")
             return None
 
-    def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
+    """def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
         """Generates a summary for a video using its transcript or description."""
         content_to_summarize = ""
         try:
@@ -164,7 +164,7 @@ class LLMHandler:
         except Exception as e:
             st.error(f"Error generating video summary: {e}")
             return None
-
+"""
     def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> Dict[str, Optional[str]]:
         """Generate response with a robust, self-correcting prompt to ensure a valid answer."""
         response_text = ""
