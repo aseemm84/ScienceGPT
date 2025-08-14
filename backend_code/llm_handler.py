@@ -61,14 +61,38 @@ class LLMHandler:
             cache_time = datetime.fromisoformat(cache_time)
         return datetime.now() - cache_time < timedelta(hours=cache_duration_hours)
 
-    def search_and_select_video(self, question: str, grade: int, subject: str, topic: str) -> Optional[Dict[str, str]]:
+    def _translate_for_search(self, question: str, language: str) -> str:
+        """Translates the user's question to English for a more effective YouTube search."""
+        if language.lower() == 'english':
+            return question
+
+        try:
+            translation_prompt = f"Translate the following text to English: \"{question}\""
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a translation assistant. Provide only the translated text."},
+                    {"role": "user", "content": translation_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=200
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            st.warning(f"Could not translate question for video search: {e}")
+            return question # Fallback to original question
+
+    def search_and_select_video(self, question: str, grade: int, subject: str, topic: str, language: str) -> Optional[Dict[str, str]]:
         """Searches for top videos and uses an LLM to select the best one with improved context."""
         if not self.youtube_service:
             return None
         
         try:
-            # More specific search query
-            search_query = f"educational video for grade {grade} {subject} {topic}: {question}"
+            # Translate the question to English for better search results
+            english_question = self._translate_for_search(question, language)
+
+            # More specific search query using the English translation
+            search_query = f"educational video for grade {grade} {subject} {topic}: {english_question}"
             search_response = self.youtube_service.search().list(
                 q=search_query,
                 part='snippet',
@@ -97,7 +121,7 @@ class LLMHandler:
             # Improved prompt with more context
             selection_prompt = f"""
             You are an expert at selecting relevant educational videos for Indian students.
-            A Grade {grade} student, studying the topic '{topic}' in the subject '{subject}', asked: "{question}"
+            A Grade {grade} student, studying the topic '{topic}' in the subject '{subject}', asked: "{english_question}"
 
             From the following list of YouTube videos, select the ONE that is most relevant and appropriate.
             Analyze the titles carefully to make your choice. Return ONLY the ID of the best video and nothing else.
@@ -140,7 +164,6 @@ class LLMHandler:
                     "title": videos[0]['snippet']['title'],
                     "description": videos[0]['snippet']['description']
                 }
-            return None
 
     def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
         """Generates a summary for a video using its transcript or description."""
