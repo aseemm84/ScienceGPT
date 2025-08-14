@@ -171,8 +171,8 @@ class LLMHandler:
                     {"role": "system", "content": "You are an expert at summarizing educational content for students."},
                     {"role": "user", "content": summary_prompt}
                 ],
-                temperature=0.5,
-                max_tokens=150
+                temperature=0.2,
+                max_tokens=100
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -191,13 +191,14 @@ class LLMHandler:
             system_prompt = f"""
             You are ScienceGPT, an expert science teacher for Indian students, with a helpful and knowledgeable persona.
             The user is a Grade {grade} student. Your explanations must be simple and age-appropriate for this grade level.
+            The user asked you a question {question} about the topic {topic} for grade {grade} level {subject}.
 
             **PRIMARY DIRECTIVE: You MUST answer the user's question in their chosen language: {language}.**
 
             **INTERNAL THOUGHT PROCESS (Follow these steps if needed):**
             1.  Your first attempt should always be to answer directly and accurately in {language}.
             2.  If you find it difficult to provide a high-quality answer directly in {language}, you will perform the following steps internally, without showing them to the user:
-                a.  Translate the user's question into English.
+                a.  Translate the user's question {question} into English.
                 b.  Formulate a detailed, accurate answer in English based on your knowledge.
                 c.  Carefully translate your English answer back into {language}, ensuring all scientific terms are translated correctly.
             3.  You will then present ONLY the final, translated answer to the user in {language}.
@@ -206,7 +207,7 @@ class LLMHandler:
             """
 
             user_prompt = f"""
-            Student Question: "{question}"
+            Student Question: {question}
             Context:
             - Subject: {subject}
             - Topic: {topic}
