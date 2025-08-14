@@ -133,38 +133,7 @@ class LLMHandler:
             st.error(f"An error occurred during video selection: {e}")
             return None
 
-    """def get_video_summary(self, video_id: str, video_description: str) -> Optional[str]:
-        """Generates a summary for a video using its transcript or description."""
-        content_to_summarize = ""
-        try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi'])
-            transcript_text = " ".join([item['text'] for item in transcript_list])
-            content_to_summarize = transcript_text
-        except (NoTranscriptFound, TranscriptsDisabled):
-            content_to_summarize = video_description
-        except Exception:
-            content_to_summarize = video_description
-
-        if not content_to_summarize:
-            return "No summary could be generated."
-
-        summary_prompt = f"Summarize the following for a young student in 2-3 sentences:\n\n{content_to_summarize[:2000]}"
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert at summarizing educational content for students."},
-                    {"role": "user", "content": summary_prompt}
-                ],
-                temperature=0.2,
-                max_tokens=150
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            st.error(f"Error generating video summary: {e}")
-            return None
-"""
+    
     def generate_response(self, question: str, grade: int, subject: str, language: str, topic: str) -> Dict[str, Optional[str]]:
         """Generate response with a robust, self-correcting prompt to ensure a valid answer."""
         response_text = ""
