@@ -138,7 +138,7 @@ class LLMHandler:
         """Generate response with a robust, self-correcting prompt to ensure a valid answer."""
         response_text = ""
         video_url = None
-        
+        original_english_response = None # ADDED: Initialize variable
         
         try:
             lang_code = self.lang_map.get(language, 'en')
@@ -174,6 +174,7 @@ class LLMHandler:
 
             # --- Step 3: Translate the English response back to the user's language ---
             if lang_code != 'en':
+                original_english_response = english_response # ADDED: Store original English response
                 try:
                     response_text = GoogleTranslator(source='en', target=lang_code).translate(english_response)
                 except Exception as e:
@@ -191,13 +192,13 @@ class LLMHandler:
             if selected_video:
                 video_id = selected_video['id']
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
-                #video_summary = self.get_video_summary(video_id, selected_video['description'])
 
         except Exception as e:
             st.error(f"Error generating response: {str(e)}")
             response_text = f"An unexpected error occurred. Please try again. {str(e)}"
         
-        return {"text": response_text, "video_url": video_url}
+        # MODIFIED: Add original_english_response to the return dictionary
+        return {"text": response_text, "video_url": video_url, "original_english": original_english_response}
 
     def generate_suggestions(self, grade: int, subject: str, language: str, topic: str) -> List[str]:
         """Generate dynamic question suggestions based on current settings"""
