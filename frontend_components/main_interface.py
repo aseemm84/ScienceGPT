@@ -50,13 +50,15 @@ def draw_main_interface():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            # ADDED: Logic to show an expander for the original English response
+            if message["role"] == "assistant" and message.get("original_english"):
+                with st.expander("See original English response"):
+                    st.markdown(message["original_english"])
+            
             if message["role"] == "assistant" and message.get("video_url"):
                 st.markdown("---")
                 st.markdown("##### 📺 Recommended Video")
                 st.video(message["video_url"])
-                #if message.get("video_summary"):
-                 #   with st.expander("View Video Summary"):
-                  #      st.markdown(message["video_summary"])
 
     # Process input from either a button click or the chat input box
     prompt = st.chat_input(f"Ask your {subject} question in {language}...")
@@ -77,22 +79,25 @@ def draw_main_interface():
                 )
                 response_text = response_data.get("text", "Sorry, I encountered an error.")
                 video_url = response_data.get("video_url")
-                #video_summary = response_data.get("video_summary")
+                original_english = response_data.get("original_english") # ADDED
 
                 st.markdown(response_text)
+                
+                # ADDED: Show expander for the new message immediately if applicable
+                if original_english:
+                    with st.expander("See original English response"):
+                        st.markdown(original_english)
+
                 if video_url:
                     st.markdown("---")
                     st.markdown("##### 📺 Recommended Video")
                     st.video(video_url)
-                    #if video_summary:
-                     #   with st.expander("View Video Summary"):
-                      #      st.markdown(video_summary)
 
         assistant_message = {
             "role": "assistant", 
             "content": response_text, 
             "video_url": video_url,
-            #"video_summary": video_summary
+            "original_english": original_english # ADDED
         }
         st.session_state.messages.append(assistant_message)
 
