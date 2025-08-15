@@ -8,6 +8,17 @@ from typing import List, Dict, Optional
 
 def draw_main_interface():
     """Draw the enhanced main interface with a simplified and robust chat handler."""
+    
+    st.markdown("""
+        <div style="text-align: center;">
+            <h1 style="font-size: 3rem; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 0;">
+                <span style="font-size: 3.5rem; margin-right: 10px;">🧪</span> ScienceGPT
+            </h1>
+            <p style="font-size: 1.25rem; color: #666; margin-top: 0;">Your Personal AI Science Tutor</p>
+        </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     st.title("🤖 Ask Your Science Questions")
 
     # Get current settings from session state
