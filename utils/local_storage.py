@@ -1,195 +1,139 @@
 """
-localStorage bridge for ScienceGPT.
+Persistence layer for ScienceGPT v3 — REVISED.
 
-Streamlit has no native localStorage API. This module provides a clean
-read/write interface by injecting JavaScript via st.components.v1.html
-and communicating back to Python through Streamlit's query_params.
+Replaces the broken localStorage JS-bridge approach with st.query_params,
+which works reliably on all OS and browsers (Chrome, Safari, Firefox on
+macOS M1, Windows, iOS, Android).
 
-Architecture:
-  - On page load, JS reads localStorage and writes a compact JSON blob
-    into ?ls_data=<base64> in the URL query params.
-  - Python reads that query param once and hydrates session_state.
-  - On write, Python encodes the payload as base64, injects JS that
-    writes it to localStorage and clears the query param.
+How it works:
+  - On app load, read ?name=&grade=&language=&subject=&difficulty= from the URL.
+  - After onboarding completes (or settings change), write those keys back into
+    the URL via st.query_params.
+  - The URL can be bookmarked or shared and will restore the user's settings.
 
-Key stored: "sciencegpt_user"
-Payload schema:
-  {
-    "name":        str,
-    "grade":       int,
-    "language":    str,
-    "subject":     str,
-    "points":      int,
-    "badges":      list[str],
-    "streak_days": int,
-    "daily_visits":list[str],
-    "bookmarks":   list[{topic, subject, grade, saved_at}],
-    "difficulty":  str   ("Simple" | "Standard" | "Deep Dive")
-  }
+What is NOT persisted across sessions this way:
+  - Points / badges / streak (session-only; resets on refresh)
+  - Bookmarks (session-only; resets on refresh)
+  - Chat history (session-only by design)
+
+For full cross-session persistence, use a database (Supabase free tier
+recommended). See README for setup instructions.
 """
 
 from __future__ import annotations
-
-import base64
-import json
 import streamlit as st
-import streamlit.components.v1 as components
 from utils.helpers import get_logger
 
 log = get_logger(__name__)
 
-_LS_KEY = "sciencegpt_user"
-_QP_KEY = "ls_data"
+# Query param keys
+_QP_NAME       = "name"
+_QP_GRADE      = "grade"
+_QP_LANGUAGE   = "language"
+_QP_SUBJECT    = "subject"
+_QP_DIFFICULTY = "difficulty"
 
 
 # ── Read ──────────────────────────────────────────────────────────────────────
 
 def load_from_local_storage() -> dict | None:
     """
-    Inject JS that reads localStorage and stuffs the value into a query param.
-    Returns the parsed dict on the NEXT rerun (after JS fires), or None.
+    Read persisted user settings from URL query params.
+    Returns a dict matching the old localStorage schema, or None if no name
+    is present (triggers onboarding).
 
-    Call this once at the top of app.py before any other rendering.
+    Call once at the top of app.py.
     """
-    # Step 1: inject reader JS (runs in the browser)
-    _inject_reader()
+    name = st.query_params.get(_QP_NAME, "").strip()
+    if not name:
+        return None
 
-    # Step 2: on subsequent reruns, the query param will be populated
-    raw = st.query_params.get(_QP_KEY)
-    if raw:
-        try:
-            decoded = base64.b64decode(raw.encode()).decode()
-            data = json.loads(decoded)
-            # Clean the query param so it doesn't persist in the URL
-            _clear_qp()
-            return data
-        except Exception as e:
-            log.warning("localStorage decode failed: %s", e)
-            _clear_qp()
-    return None
-
-
-def _inject_reader() -> None:
-    """Inject JS that reads localStorage and fires a query-param update."""
-    # Only inject once per session to avoid flickering
-    if st.session_state.get("_ls_reader_injected"):
-        return
-    st.session_state["_ls_reader_injected"] = True
-
-    js = f"""
-    <script>
-    (function() {{
-        try {{
-            const raw = localStorage.getItem('{_LS_KEY}');
-            if (raw) {{
-                const b64 = btoa(unescape(encodeURIComponent(raw)));
-                const url = new URL(window.parent.location.href);
-                url.searchParams.set('{_QP_KEY}', b64);
-                window.parent.history.replaceState(null, '', url.toString());
-                // Trigger a Streamlit rerun by dispatching a storage event
-                window.parent.dispatchEvent(new Event('popstate'));
-            }}
-        }} catch(e) {{ console.warn('ScienceGPT localStorage read failed', e); }}
-    }})();
-    </script>
-    """
-    components.html(js, height=0, scrolling=False)
-
-
-def _clear_qp() -> None:
-    """Remove the ls_data query param from the URL."""
+    grade_raw = st.query_params.get(_QP_GRADE, "8")
     try:
-        if _QP_KEY in st.query_params:
-            del st.query_params[_QP_KEY]
-    except Exception:
-        pass
+        grade = int(grade_raw)
+    except ValueError:
+        grade = 8
+
+    return {
+        "name":       name,
+        "grade":      grade,
+        "language":   st.query_params.get(_QP_LANGUAGE,   "English"),
+        "subject":    st.query_params.get(_QP_SUBJECT,    "Physics"),
+        "difficulty": st.query_params.get(_QP_DIFFICULTY, "Standard"),
+        # Points/badges/bookmarks are session-only; not restored from URL
+        "points":       0,
+        "badges":       [],
+        "streak_days":  0,
+        "daily_visits": [],
+        "bookmarks":    [],
+    }
+
+
+def hydrate_from_payload(data: dict) -> None:
+    """
+    Write a payload dict back into st.session_state.
+    Only sets keys that aren't already set this session.
+    """
+    if data.get("name") and not st.session_state.get("student_name"):
+        st.session_state["student_name"] = data["name"]
+
+    if not st.session_state.get("onboarding_done"):
+        for key in ("grade", "language", "subject", "difficulty"):
+            if key in data:
+                st.session_state[key] = data[key]
+
+    # Bookmarks: restore if session has none
+    if data.get("bookmarks") and not st.session_state.get("bookmarks"):
+        st.session_state["bookmarks"] = data["bookmarks"]
 
 
 # ── Write ─────────────────────────────────────────────────────────────────────
 
 def save_to_local_storage(data: dict) -> None:
     """
-    Inject JS that writes `data` into localStorage under _LS_KEY.
-    Call this whenever persistent state changes (name set, points earned, etc.).
+    Write user settings into URL query params so they survive a page refresh.
+    Silently skips any key whose value cannot be represented as a string.
     """
+    updates: dict[str, str] = {}
+
+    if data.get("name"):
+        updates[_QP_NAME] = str(data["name"])
+    if data.get("grade"):
+        updates[_QP_GRADE] = str(data["grade"])
+    if data.get("language"):
+        updates[_QP_LANGUAGE] = str(data["language"])
+    if data.get("subject"):
+        updates[_QP_SUBJECT] = str(data["subject"])
+    if data.get("difficulty"):
+        updates[_QP_DIFFICULTY] = str(data["difficulty"])
+
     try:
-        payload = json.dumps(data, default=str)
-        b64 = base64.b64encode(payload.encode()).decode()
+        for k, v in updates.items():
+            st.query_params[k] = v
     except Exception as e:
-        log.warning("localStorage encode failed: %s", e)
-        return
-
-    js = f"""
-    <script>
-    (function() {{
-        try {{
-            const raw = atob('{b64}');
-            const decoded = decodeURIComponent(escape(raw));
-            localStorage.setItem('{_LS_KEY}', decoded);
-        }} catch(e) {{ console.warn('ScienceGPT localStorage write failed', e); }}
-    }})();
-    </script>
-    """
-    components.html(js, height=0, scrolling=False)
+        log.warning("query_params write failed: %s", e)
 
 
-# ── High-level helpers ────────────────────────────────────────────────────────
+# ── High-level helpers (same public API as before) ───────────────────────────
 
 def build_persist_payload() -> dict:
-    """
-    Collect all persistable state from st.session_state into a single dict.
-    Called before every save.
-    """
+    """Collect persistable state from session_state."""
     gam_data = st.session_state.get("gamification_data", {})
     return {
         "name":         st.session_state.get("student_name", ""),
         "grade":        st.session_state.get("grade", 8),
         "language":     st.session_state.get("language", "English"),
         "subject":      st.session_state.get("subject", "Physics"),
+        "difficulty":   st.session_state.get("difficulty", "Standard"),
+        # These are kept in payload schema for future DB upgrade compatibility
         "points":       gam_data.get("points", 0),
         "badges":       gam_data.get("badges", []),
         "streak_days":  gam_data.get("streak_days", 0),
         "daily_visits": gam_data.get("daily_visits", []),
         "bookmarks":    st.session_state.get("bookmarks", []),
-        "difficulty":   st.session_state.get("difficulty", "Standard"),
     }
 
 
-def hydrate_from_payload(data: dict) -> None:
-    """
-    Write a localStorage payload back into st.session_state.
-    Only sets keys that aren't already overridden this session.
-    """
-    if data.get("name") and not st.session_state.get("student_name"):
-        st.session_state["student_name"] = data["name"]
-
-    # Restore settings only on first load (onboarding_done guards this)
-    if not st.session_state.get("onboarding_done"):
-        for key in ("grade", "language", "subject", "difficulty"):
-            if key in data:
-                st.session_state[key] = data[key]
-
-    # Restore bookmarks
-    if "bookmarks" in data and not st.session_state.get("bookmarks"):
-        st.session_state["bookmarks"] = data["bookmarks"]
-
-    # Restore gamification data
-    if "gamification_data" in st.session_state:
-        gd = st.session_state["gamification_data"]
-        if data.get("points", 0) > gd.get("points", 0):
-            gd["points"] = data["points"]
-        if data.get("badges"):
-            existing = set(gd.get("badges", []))
-            existing.update(data["badges"])
-            gd["badges"] = list(existing)
-        if data.get("streak_days", 0) > gd.get("streak_days", 0):
-            gd["streak_days"] = data["streak_days"]
-        if data.get("daily_visits"):
-            existing_visits = set(gd.get("daily_visits", []))
-            existing_visits.update(data["daily_visits"])
-            gd["daily_visits"] = list(existing_visits)
-
-
 def persist_now() -> None:
-    """Convenience: build payload and write to localStorage in one call."""
+    """Convenience: build payload and write to query params in one call."""
     save_to_local_storage(build_persist_payload())
