@@ -1,6 +1,6 @@
 """
 Shared utility helpers for ScienceGPT.
-Keeps formatting, logging, and JSON-safety out of business logic.
+Unchanged from v2 — included so the v3 folder is self-contained.
 """
 
 import json
@@ -10,10 +10,8 @@ import hashlib
 from datetime import datetime
 from typing import Any
 
-# ── Logger ────────────────────────────────────────────────────────────────────
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a consistently configured logger."""
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = logging.StreamHandler()
@@ -26,13 +24,7 @@ def get_logger(name: str) -> logging.Logger:
     return logger
 
 
-# ── JSON helpers ──────────────────────────────────────────────────────────────
-
 def safe_parse_json(raw: str) -> Any | None:
-    """
-    Strip markdown fences and parse JSON.
-    Returns None on failure instead of raising.
-    """
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
     try:
         return json.loads(cleaned)
@@ -40,18 +32,12 @@ def safe_parse_json(raw: str) -> Any | None:
         return None
 
 
-# ── Hashing / caching ─────────────────────────────────────────────────────────
-
 def make_cache_key(*parts: Any) -> str:
-    """Create a stable MD5 cache key from arbitrary parts."""
     joined = "-".join(str(p) for p in parts)
     return hashlib.md5(joined.encode()).hexdigest()
 
 
-# ── Set serialisation (session state safety) ──────────────────────────────────
-
 def set_to_list(obj: Any) -> Any:
-    """Recursively convert sets to sorted lists for JSON-safe storage."""
     if isinstance(obj, set):
         return sorted(obj)
     if isinstance(obj, dict):
@@ -61,39 +47,32 @@ def set_to_list(obj: Any) -> Any:
     return obj
 
 
-# ── Display helpers ───────────────────────────────────────────────────────────
-
 def grade_label(grade: int) -> str:
     return f"Grade {grade}"
 
 
 def score_to_color(score: float, max_score: float = 100) -> str:
-    """Return a hex colour string on a red→yellow→green scale."""
     pct = score / max_score
     if pct < 0.4:
-        return "#e74c3c"   # red
+        return "#e74c3c"
     if pct < 0.7:
-        return "#f39c12"   # amber
-    return "#27ae60"       # green
+        return "#f39c12"
+    return "#27ae60"
 
 
 def understanding_emoji(level: str) -> str:
     return {
-        "Excellent": "🌟",
-        "Good": "✅",
-        "Partial": "🔶",
-        "Needs Review": "🔴",
+        "Excellent": "🌟", "Good": "✅",
+        "Partial": "🔶", "Needs Review": "🔴",
     }.get(level, "❓")
 
 
 def format_duration(minutes: float) -> str:
-    """Format minutes into a human-readable string."""
     if minutes < 1:
         return "< 1 min"
     if minutes < 60:
         return f"{int(minutes)} min"
-    h = int(minutes // 60)
-    m = int(minutes % 60)
+    h, m = int(minutes // 60), int(minutes % 60)
     return f"{h}h {m}m"
 
 
