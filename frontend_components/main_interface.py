@@ -1,13 +1,13 @@
 """
-Main Interface v3 for ScienceGPT.
+Main Interface v3 — simplified name handling.
 
-New vs v2:
-- Feature #1: Student name in hero greeting (personalised)
-- Feature #4: Concept Summary Cards after each assistant message
-- Feature #5: Difficulty Level selector (Simple / Standard / Deep Dive) inline in chat header
-- Feature #6: Bookmark button on every assistant message
-- Difficulty is read from session_state and passed to stream_response
-- Summary is generated async after streaming (one extra small LLM call)
+Name is captured inline at the top of the chat panel via a small
+text_input + button row. It is non-blocking: the student can skip it
+and start asking questions immediately. Once entered it persists for
+the full session and appears in the greeting.
+
+On refresh: the input appears again. Takes ~3 seconds to re-enter.
+This is the correct trade-off vs broken query_param approaches.
 """
 
 from __future__ import annotations
@@ -15,22 +15,129 @@ from __future__ import annotations
 import streamlit as st
 from backend_code.llm_handler import get_llm_handler
 from frontend_components.bookmarks import render_bookmark_button
-from utils.local_storage import persist_now
 from config.constants import DIFFICULTY_LEVELS, DIFFICULTY_ICONS, DIFFICULTY_HELP
 
 
-# ── Suggestion panel ──────────────────────────────────────────────────────────
+# ── Name capture widget ───────────────────────────────────────────────────────
+
+def _render_name_capture() -> None:
+    """
+    If no name is set this session, show a small inline name-entry row.
+    Non-blocking: student can ignore it and still use the app.
+    Disappears once the name is entered.
+    """
+    if st.session_state.get("student_name"):
+        return  # already have it, don't show
+
+    st.markdown(
+        """
+        <div class="name-capture-bar">
+            👋 <strong>Tell us your name for a personalised experience</strong>
+            <span style="color:#94a3b8; font-size:0.82rem;"> (optional — you can skip)</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_input, col_btn, col_skip = st.columns([3, 1, 1])
+    with col_input:
+        name = st.text_input(
+            "name_input",
+            placeholder="Your name e.g. Priya, Arjun…",
+            label_visibility="collapsed",
+            key="name_text_input",
+        )
+    with col_btn:
+        if st.button("✅ Set Name", use_container_width=True, type="primary"):
+            stripped = name.strip()
+            if stripped:
+                st.session_state["student_name"] = stripped
+                st.rerun()
+            else:
+                st.warning("Please enter a name.")
+    with col_skip:
+        if st.button("Skip →", use_container_width=True):
+            # Use a placeholder so the widget disappears but name stays falsy-ish
+            st.session_state["student_name"] = "skip"
+            st.rerun()
+
+    st.markdown("---")
+
+
+# ── Hero ──────────────────────────────────────────────────────────────────────
+
+def _render_hero() -> None:
+    raw  = st.session_state.get("student_name")
+    name = raw if (raw and raw != "skip") else None
+
+    streak = 0
+    if "gamification" in st.session_state:
+        streak = st.session_state.gamification.get_stats().get("streak_days", 0)
+
+    if name:
+        streak_msg = (
+            f"🔥 {streak}-day streak — keep it going!"
+            if streak >= 2
+            else "Welcome back!"
+        )
+        st.markdown(
+            f"""
+            <div class="sgpt-hero">
+                <h1>🧪 ScienceGPT</h1>
+                <p class="hero-greeting">Hey {name}! {streak_msg}</p>
+                <p class="hero-sub">Your Personal AI Science Tutor</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div class="sgpt-hero">
+                <h1>🧪 ScienceGPT</h1>
+                <p>Your Personal AI Science Tutor</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ── Difficulty selector ───────────────────────────────────────────────────────
+
+def _render_difficulty_selector() -> str:
+    current = st.session_state.get("difficulty", "Standard")
+    st.markdown("**🎚️ Explanation Depth**")
+    cols = st.columns(3)
+    for col, level in zip(cols, DIFFICULTY_LEVELS):
+        with col:
+            icon     = DIFFICULTY_ICONS[level]
+            btn_type = "primary" if level == current else "secondary"
+            if st.button(
+                f"{icon} {level}",
+                key=f"diff_{level}",
+                type=btn_type,
+                use_container_width=True,
+                help=DIFFICULTY_HELP[level],
+            ):
+                st.session_state["difficulty"] = level
+                st.rerun()
+    return current
+
+
+# ── Suggestions ───────────────────────────────────────────────────────────────
 
 def _render_suggestions(grade: int, subject: str, language: str, topic: str) -> None:
     handler      = get_llm_handler()
     settings_sig = f"{grade}|{subject}|{language}|{topic}"
 
-    if (st.session_state.get("_sugg_sig") != settings_sig
-            or not st.session_state.get("_suggestions")):
+    if (
+        st.session_state.get("_sugg_sig") != settings_sig
+        or not st.session_state.get("_suggestions")
+    ):
         with st.spinner("Generating personalised questions…"):
             suggestions = handler.generate_suggestions(grade, subject, language, topic)
-        st.session_state["_suggestions"]  = suggestions
-        st.session_state["_sugg_sig"]     = settings_sig
+        st.session_state["_suggestions"] = suggestions
+        st.session_state["_sugg_sig"]    = settings_sig
     else:
         suggestions = st.session_state["_suggestions"]
 
@@ -40,50 +147,21 @@ def _render_suggestions(grade: int, subject: str, language: str, topic: str) -> 
     cols = st.columns(2)
     for i, suggestion in enumerate(suggestions):
         with cols[i % 2]:
-            if st.button(suggestion, key=f"sugg_{i}_{settings_sig[:8]}",
-                         use_container_width=True):
+            if st.button(
+                suggestion,
+                key=f"sugg_{i}_{settings_sig[:8]}",
+                use_container_width=True,
+            ):
                 st.session_state.user_input = suggestion
                 st.rerun()
 
 
-# ── Difficulty selector ───────────────────────────────────────────────────────
-
-def _render_difficulty_selector() -> str:
-    """
-    Render three pill buttons for Simple / Standard / Deep Dive.
-    Returns the currently selected difficulty string.
-    """
-    current = st.session_state.get("difficulty", "Standard")
-
-    st.markdown("**🎚️ Explanation Depth**")
-    cols = st.columns(3)
-    for col, level in zip(cols, DIFFICULTY_LEVELS):
-        with col:
-            icon    = DIFFICULTY_ICONS[level]
-            is_sel  = level == current
-            btn_type = "primary" if is_sel else "secondary"
-            if st.button(f"{icon} {level}", key=f"diff_{level}",
-                         type=btn_type, use_container_width=True,
-                         help=DIFFICULTY_HELP[level]):
-                st.session_state["difficulty"] = level
-                persist_now()
-                st.rerun()
-
-    return current
-
-
-# ── Concept Summary Card (Feature #4) ────────────────────────────────────────
+# ── Summary card ──────────────────────────────────────────────────────────────
 
 def _render_summary_card(msg_index: int, answer_text: str, grade: int) -> None:
-    """
-    Show a collapsible '📌 Key Takeaways' card under an assistant message.
-    Generates the summary on first view, caches it in session_state.
-    """
     cache_key = f"summary_{msg_index}"
 
-    # Check if summary already generated
     if cache_key not in st.session_state:
-        # Lazy generation — only when expander is opened
         with st.expander("📌 Key Takeaways — tap to expand"):
             if st.button("✨ Generate Summary", key=f"sum_btn_{msg_index}"):
                 with st.spinner("Extracting key ideas…"):
@@ -98,15 +176,10 @@ def _render_summary_card(msg_index: int, answer_text: str, grade: int) -> None:
         return
 
     with st.expander("📌 Key Takeaways", expanded=False):
-        st.markdown(
-            '<div class="summary-card">',
-            unsafe_allow_html=True,
-        )
-        takeaways = result.get("takeaways", [])
-        for i, t in enumerate(takeaways):
+        st.markdown('<div class="summary-card">', unsafe_allow_html=True)
+        for i, t in enumerate(result.get("takeaways", [])):
             icon = ["1️⃣", "2️⃣", "3️⃣"][i] if i < 3 else "▪️"
             st.markdown(f"{icon} {t}")
-
         remember = result.get("remember_this", "")
         if remember:
             st.markdown(
@@ -149,15 +222,15 @@ def _render_explain_back(msg_index: int, original_text: str, grade: int) -> None
                     )
                 st.session_state[result_key] = result
                 if "gamification" in st.session_state:
-                    st.session_state.gamification.add_explain_back(result.get("score", 5))
-                persist_now()
+                    st.session_state.gamification.add_explain_back(
+                        result.get("score", 5)
+                    )
                 st.rerun()
 
         if result_key in st.session_state:
             r     = st.session_state[result_key]
             score = r.get("score", 0)
             level = r.get("understanding_level", "")
-
             from utils.helpers import score_to_color, understanding_emoji
             color = score_to_color(score, max_score=10)
 
@@ -172,55 +245,31 @@ def _render_explain_back(msg_index: int, original_text: str, grade: int) -> None
                     unsafe_allow_html=True,
                 )
             with col_info:
-                st.markdown(f"✅ **What you got right:** {r.get('correct_parts', '')}")
+                st.markdown(f"✅ **What you got right:** {r.get('correct_parts','')}")
                 if r.get("missed_parts"):
-                    st.markdown(f"🔶 **To improve:** {r.get('missed_parts', '')}")
-                st.markdown(f"💬 **Follow-up:** *{r.get('follow_up_question', '')}*")
+                    st.markdown(f"🔶 **To improve:** {r.get('missed_parts','')}")
+                st.markdown(f"💬 **Follow-up:** *{r.get('follow_up_question','')}*")
                 st.info(r.get("encouragement", "Great effort!"))
 
 
-# ── Main draw function ────────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 def draw_main_interface() -> None:
-    """Render the full main chat interface."""
 
-    # ── Personalised hero ──────────────────────────────────────────────────────
-    name   = st.session_state.get("student_name", "")
-    grade  = st.session_state.get("grade", 8)
-    streak = 0
-    if "gamification" in st.session_state:
-        streak = st.session_state.gamification.get_stats().get("streak_days", 0)
+    # 1. Name capture (inline, non-blocking)
+    _render_name_capture()
 
-    if name:
-        streak_msg = f"🔥 {streak}-day streak — keep it going!" if streak >= 2 else "Welcome back!"
-        st.markdown(
-            f"""
-            <div class="sgpt-hero">
-                <h1>🧪 ScienceGPT</h1>
-                <p class="hero-greeting">Hey {name}! {streak_msg}</p>
-                <p class="hero-sub">Your Personal AI Science Tutor</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            """
-            <div class="sgpt-hero">
-                <h1>🧪 ScienceGPT</h1>
-                <p>Your Personal AI Science Tutor</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # 2. Hero greeting
+    _render_hero()
 
+    grade        = st.session_state.get("grade", 8)
     language     = st.session_state.get("language", "English")
     subject      = st.session_state.get("subject", "Physics")
     topic        = st.session_state.get("topic", "All Topics")
     socratic_mode: bool = st.session_state.get("socratic_mode", False)
     handler      = get_llm_handler()
 
-    # ── Mode indicator ─────────────────────────────────────────────────────────
+    # 3. Mode indicator
     if socratic_mode:
         st.markdown(
             '<span class="mode-badge mode-socratic">🦉 Socratic Mode — '
@@ -228,29 +277,26 @@ def draw_main_interface() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── Difficulty selector (Feature #5) ──────────────────────────────────────
+    # 4. Difficulty selector
     difficulty = _render_difficulty_selector()
 
-    # ── Suggestions ────────────────────────────────────────────────────────────
+    # 5. Suggestions
     st.markdown("---")
     _render_suggestions(grade, subject, language, topic)
 
-    # ── Chat area ──────────────────────────────────────────────────────────────
+    # 6. Chat
     st.markdown("---")
     st.markdown("### 💬 Chat with ScienceGPT")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Track which message index corresponds to which user question
-    # (for bookmark button — needs the question text)
+    # Map assistant message index → the user question that triggered it
     user_q_map: dict[int, str] = {}
     for i, msg in enumerate(st.session_state.messages):
         if msg["role"] == "user":
-            # The NEXT assistant message corresponds to this question
             user_q_map[i + 1] = msg["content"]
 
-    # Render history
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -266,18 +312,14 @@ def draw_main_interface() -> None:
                     st.video(message["video_url"])
 
                 if message.get("content") and not message.get("is_socratic"):
-                    # Summary card (Feature #4)
                     _render_summary_card(i, message["content"], grade)
-                    # Explain-It-Back
                     _render_explain_back(i, message["content"], grade)
-                    # Bookmark button (Feature #6)
                     question_for_bm = user_q_map.get(i, "")
                     if question_for_bm:
                         render_bookmark_button(i, question_for_bm, message["content"])
 
-    # ── Input handling ─────────────────────────────────────────────────────────
+    # 7. Input
     prompt = st.chat_input(f"Ask a {subject} question in {language}…")
-
     if st.session_state.get("user_input"):
         prompt = st.session_state.pop("user_input")
 
@@ -286,13 +328,12 @@ def draw_main_interface() -> None:
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # ── Streaming response ─────────────────────────────────────────────────
         with st.chat_message("assistant"):
             if socratic_mode:
                 st.markdown(
                     '<span class="mode-badge mode-socratic" '
                     'style="font-size:0.7rem;margin-bottom:6px;display:inline-flex;">'
-                    '🦉 Socratic</span>',
+                    "🦉 Socratic</span>",
                     unsafe_allow_html=True,
                 )
 
@@ -310,7 +351,6 @@ def draw_main_interface() -> None:
         full_english = st.session_state.pop("_last_english_response", streamed_text)
         english_q    = st.session_state.pop("_last_english_question", prompt)
 
-        # ── Post-stream finalization ───────────────────────────────────────────
         with st.spinner("Finding a relevant video…"):
             final = handler.finalize_response(
                 english_response=full_english,
@@ -335,7 +375,6 @@ def draw_main_interface() -> None:
                 st.markdown("##### 📺 Recommended Video")
                 st.video(final["video_url"])
 
-        # ── Record progress + gamification ────────────────────────────────────
         if "progress" in st.session_state:
             st.session_state.progress.record_question(
                 question=prompt, subject=subject, grade=grade, topic=topic
@@ -344,9 +383,7 @@ def draw_main_interface() -> None:
             st.session_state.gamification.add_question(subject=subject)
             if socratic_mode:
                 st.session_state.gamification.add_socratic_session()
-            persist_now()
 
-        # ── Save to history ────────────────────────────────────────────────────
         st.session_state.messages.append({
             "role":             "assistant",
             "content":          display_text if lang_code != "en" else full_english,
@@ -358,12 +395,14 @@ def draw_main_interface() -> None:
 
         st.rerun()
 
-    # ── Clear chat ─────────────────────────────────────────────────────────────
+    # 8. Clear chat
     if st.session_state.messages:
         if st.button("🗑️ Clear Chat", help="Clear conversation history"):
             st.session_state.messages = []
-            keys_to_clear = [k for k in st.session_state
-                             if k.startswith(("eib_", "summary_"))]
+            keys_to_clear = [
+                k for k in st.session_state
+                if k.startswith(("eib_", "summary_"))
+            ]
             for k in keys_to_clear:
                 del st.session_state[k]
             st.rerun()
