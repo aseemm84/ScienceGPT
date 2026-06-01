@@ -1,10 +1,6 @@
 """
-Sidebar v3 — name-fix revision.
-
-Bug fixed: student_name is now initialised as None (not ""), so the
-`if name:` check correctly distinguishes "not set" from "set to empty string".
-The sidebar now shows the actual name when it's been set, never "Guest"
-after onboarding is complete.
+Sidebar v3 — simplified.
+No persist_now() calls. Name comes from session_state only.
 """
 
 from __future__ import annotations
@@ -12,17 +8,14 @@ from __future__ import annotations
 import streamlit as st
 from backend_code.curriculum_data import get_curriculum
 from frontend_components.bookmarks import draw_study_list
-from utils.local_storage import persist_now
 from config.constants import DIFFICULTY_ICONS
 
 
 def draw_sidebar() -> None:
-    """Render the full sidebar."""
 
     # ── Student name ───────────────────────────────────────────────────────────
-    # student_name is None before onboarding, a string after.
     raw_name = st.session_state.get("student_name")
-    name = raw_name.strip() if isinstance(raw_name, str) else ""
+    name     = raw_name if (isinstance(raw_name, str) and raw_name and raw_name != "skip") else None
 
     if name:
         col_name, col_edit = st.columns([3, 1])
@@ -42,11 +35,10 @@ def draw_sidebar() -> None:
                 if stripped:
                     st.session_state["student_name"] = stripped
                     st.session_state.pop("editing_name", None)
-                    persist_now()
                     st.rerun()
     else:
-        # Should only appear if someone bypasses onboarding
-        st.markdown('<p class="sidebar-section">👤 Guest</p>', unsafe_allow_html=True)
+        st.markdown('<p class="sidebar-section">👤 Enter your name above ↑</p>',
+                    unsafe_allow_html=True)
 
     # ── Learning Settings ──────────────────────────────────────────────────────
     st.markdown('<p class="sidebar-section">⚙️ Learning Settings</p>',
@@ -55,7 +47,7 @@ def draw_sidebar() -> None:
     curriculum = get_curriculum()
 
     all_grades = curriculum.get_all_grades()
-    grade = st.selectbox(
+    grade      = st.selectbox(
         "Grade",
         options=all_grades,
         index=all_grades.index(st.session_state.get("grade", 8)),
@@ -70,11 +62,11 @@ def draw_sidebar() -> None:
         key="language_selector",
     )
 
-    subjects = curriculum.get_subjects_for_grade(grade)
-    cur_subj = st.session_state.get("subject")
-    subj_idx = subjects.index(cur_subj) if cur_subj in subjects else 0
-    subject  = st.selectbox("Subject", options=subjects, index=subj_idx,
-                             key="subject_selector")
+    subjects  = curriculum.get_subjects_for_grade(grade)
+    cur_subj  = st.session_state.get("subject")
+    subj_idx  = subjects.index(cur_subj) if cur_subj in subjects else 0
+    subject   = st.selectbox("Subject", options=subjects, index=subj_idx,
+                              key="subject_selector")
 
     topics        = curriculum.get_topics_for_grade_subject(grade, subject)
     topic_options = ["All Topics"] + topics
@@ -111,14 +103,12 @@ def draw_sidebar() -> None:
                         "quiz_score", "active_quiz"):
                 st.session_state.pop(key, None)
 
-            # persist_now includes the name — URL will have ?name=X&grade=Y...
-            persist_now()
             st.success("✅ Settings applied!")
             st.rerun()
         else:
             st.info("Settings are already up to date.")
 
-    # ── Current settings summary ───────────────────────────────────────────────
+    # ── Current settings ───────────────────────────────────────────────────────
     st.markdown('<p class="sidebar-section">📋 Current Settings</p>',
                 unsafe_allow_html=True)
     diff      = st.session_state.get("difficulty", "Standard")
