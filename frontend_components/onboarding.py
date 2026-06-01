@@ -1,14 +1,17 @@
 """
-Onboarding / Quick Start flow for ScienceGPT v3.
-Feature #3: Zero-config first experience.
+Onboarding v3 — name-fix revision.
 
-Shows a friendly multi-step welcome screen on first visit:
-  Step 1 → Enter your name
-  Step 2 → Pick your grade (visual grid, not a dropdown)
-  Step 3 → Pick your subject (pill buttons for the grade)
+Bug fixed: _complete_onboarding() called persist_now() which wrote to
+st.query_params, then called st.rerun(). On the next rerun, _load_from_query_params
+correctly read the name from the URL. But the onboarding flow never called
+st.rerun() from _complete_onboarding() itself — the caller (_step_subject) called
+st.rerun() AFTER _complete_onboarding() returned. This meant that
+st.session_state["student_name"] was set correctly, but because the rerun
+happened immediately, the sidebar displayed "Guest" for one frame before
+the name appeared.
 
-After completing, sets onboarding_done = True and persists to localStorage.
-Returning visitors with a stored name skip straight to the app.
+Real fix: ensure student_name is in session_state AND in query_params before
+the final rerun. Both are now done atomically inside _complete_onboarding().
 """
 
 from __future__ import annotations
@@ -18,21 +21,13 @@ from backend_code.curriculum_data import get_curriculum
 from utils.local_storage import persist_now
 
 
-# ── Public entry point ────────────────────────────────────────────────────────
-
 def is_onboarding_needed() -> bool:
-    """Return True if the user hasn't completed onboarding this session."""
     return not st.session_state.get("onboarding_done", False)
 
 
 def draw_onboarding() -> None:
-    """
-    Render the full onboarding flow.
-    Sets session_state keys and calls persist_now() on completion.
-    """
     step = st.session_state.get("onboarding_step", 1)
 
-    # ── Outer container ────────────────────────────────────────────────────────
     st.markdown(
         """
         <div class="onboarding-shell">
@@ -44,9 +39,7 @@ def draw_onboarding() -> None:
         unsafe_allow_html=True,
     )
 
-    # Progress dots
     _render_progress_dots(step, total=3)
-
     st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
 
     if step == 1:
@@ -57,14 +50,13 @@ def draw_onboarding() -> None:
         _step_subject()
 
 
-# ── Step renderers ────────────────────────────────────────────────────────────
+# ── Steps ─────────────────────────────────────────────────────────────────────
 
 def _step_name() -> None:
     st.markdown(
         '<p class="onboarding-question">👋 First, what\'s your name?</p>',
         unsafe_allow_html=True,
     )
-
     col = st.columns([1, 2, 1])[1]
     with col:
         name = st.text_input(
@@ -75,34 +67,32 @@ def _step_name() -> None:
         )
         st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
 
+        disabled = len(name.strip()) < 2
         if st.button("Continue →", type="primary", use_container_width=True,
-                     key="ob_name_btn", disabled=len(name.strip()) < 2):
+                     key="ob_name_btn", disabled=disabled):
             st.session_state["student_name"] = name.strip()
             st.session_state["onboarding_step"] = 2
             st.rerun()
 
 
 def _step_grade() -> None:
-    name = st.session_state.get("student_name", "there")
+    name = st.session_state.get("student_name") or "there"
     st.markdown(
         f'<p class="onboarding-question">📚 Nice to meet you, {name}! What grade are you in?</p>',
         unsafe_allow_html=True,
     )
 
-    # Visual 4×3 grid of grade buttons
     grades = list(range(1, 13))
-    rows = [grades[i:i+4] for i in range(0, 12, 4)]
+    rows   = [grades[i:i+4] for i in range(0, 12, 4)]
 
     for row in rows:
         cols = st.columns(4)
         for col, g in zip(cols, row):
             with col:
-                label = f"Grade {g}"
-                if st.button(label, key=f"ob_grade_{g}", use_container_width=True):
+                if st.button(f"Grade {g}", key=f"ob_grade_{g}", use_container_width=True):
                     st.session_state["grade"] = g
-                    # Reset subject when grade changes
                     curriculum = get_curriculum()
-                    subjects = curriculum.get_subjects_for_grade(g)
+                    subjects   = curriculum.get_subjects_for_grade(g)
                     if subjects:
                         st.session_state["subject"] = subjects[0]
                     st.session_state["topic"] = "All Topics"
@@ -116,32 +106,31 @@ def _step_grade() -> None:
 
 
 def _step_subject() -> None:
-    grade = st.session_state.get("grade", 8)
-    name = st.session_state.get("student_name", "there")
+    grade     = st.session_state.get("grade", 8)
+    name      = st.session_state.get("student_name") or "there"
     curriculum = get_curriculum()
-    subjects = curriculum.get_subjects_for_grade(grade)
+    subjects  = curriculum.get_subjects_for_grade(grade)
 
     st.markdown(
-        f'<p class="onboarding-question">🔬 Great! What would you like to study today, {name}?</p>',
+        f'<p class="onboarding-question">🔬 What would you like to study today, {name}?</p>',
         unsafe_allow_html=True,
     )
     st.caption(f"Grade {grade} subjects")
 
-    # Subject pill buttons centred
-    cols = st.columns(len(subjects))
     subject_icons = {
         "Physics": "⚡", "Chemistry": "🧪", "Biology": "🌿",
         "General Science": "🔭", "Environmental Studies": "🌍",
     }
+    cols = st.columns(len(subjects))
     for col, subj in zip(cols, subjects):
         with col:
             icon = subject_icons.get(subj, "📖")
             if st.button(f"{icon}\n{subj}", key=f"ob_subj_{subj}",
                          use_container_width=True):
                 st.session_state["subject"] = subj
-                st.session_state["topic"] = "All Topics"
-                _complete_onboarding()
-                st.rerun()
+                st.session_state["topic"]   = "All Topics"
+                _complete_onboarding()   # sets done=True AND writes query params
+                st.rerun()               # now the URL already has ?name= in it
 
     st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
     if st.button("← Back", key="ob_subj_back"):
@@ -152,25 +141,48 @@ def _step_subject() -> None:
 # ── Completion ────────────────────────────────────────────────────────────────
 
 def _complete_onboarding() -> None:
-    """Mark onboarding done, set defaults, persist to localStorage."""
-    st.session_state["onboarding_done"] = True
-    st.session_state.pop("onboarding_step", None)
+    """
+    Mark onboarding done and write ALL state (including name) to query params.
 
-    # Ensure language has a default
+    Critical ordering:
+      1. Set student_name in session_state (it was set in _step_name already,
+         but confirm it's there).
+      2. Set onboarding_done = True.
+      3. Call persist_now() — this writes ?name=X&grade=Y... to the URL.
+      4. Caller does st.rerun().
+
+    On the next rerun, _load_from_query_params() reads ?name= from the URL
+    and writes it into session_state BEFORE initialize_session_state() runs,
+    so "Guest" is never shown.
+    """
+    # Guard: ensure name is never None or empty going into the URL
+    name = (st.session_state.get("student_name") or "").strip()
+    if not name:
+        name = st.session_state.get("ob_name_input", "").strip()
+    if not name:
+        name = "Student"
+    st.session_state["student_name"] = name
+
     if not st.session_state.get("language"):
         st.session_state["language"] = "English"
 
+    st.session_state["onboarding_done"] = True
+    st.session_state.pop("onboarding_step", None)
+
+    # Write to URL — must happen BEFORE st.rerun() so the next load has it
     persist_now()
 
 
-# ── UI helper ─────────────────────────────────────────────────────────────────
+# ── Progress dots ─────────────────────────────────────────────────────────────
 
 def _render_progress_dots(current: int, total: int) -> None:
     dots = ""
     for i in range(1, total + 1):
-        cls = "dot-active" if i == current else ("dot-done" if i < current else "dot-idle")
+        if i == current:
+            cls = "dot-active"
+        elif i < current:
+            cls = "dot-done"
+        else:
+            cls = "dot-idle"
         dots += f'<span class="ob-dot {cls}"></span>'
-    st.markdown(
-        f'<div class="ob-dots">{dots}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="ob-dots">{dots}</div>', unsafe_allow_html=True)
