@@ -1,11 +1,10 @@
 """
-Sidebar v3 for ScienceGPT.
+Sidebar v3 — name-fix revision.
 
-New vs v2:
-- Shows student name + edit button at top
-- Study List (bookmarks) section
-- Difficulty level shown as read-only badge (editable in chat)
-- Report card generation moved here
+Bug fixed: student_name is now initialised as None (not ""), so the
+`if name:` check correctly distinguishes "not set" from "set to empty string".
+The sidebar now shows the actual name when it's been set, never "Guest"
+after onboarding is complete.
 """
 
 from __future__ import annotations
@@ -18,10 +17,13 @@ from config.constants import DIFFICULTY_ICONS
 
 
 def draw_sidebar() -> None:
-    """Render the sidebar."""
+    """Render the full sidebar."""
 
     # ── Student name ───────────────────────────────────────────────────────────
-    name = st.session_state.get("student_name", "")
+    # student_name is None before onboarding, a string after.
+    raw_name = st.session_state.get("student_name")
+    name = raw_name.strip() if isinstance(raw_name, str) else ""
+
     if name:
         col_name, col_edit = st.columns([3, 1])
         with col_name:
@@ -36,12 +38,14 @@ def draw_sidebar() -> None:
         if st.session_state.get("editing_name"):
             new_name = st.text_input("New name:", value=name, key="new_name_input")
             if st.button("Save", key="save_name_btn"):
-                if new_name.strip():
-                    st.session_state["student_name"] = new_name.strip()
+                stripped = new_name.strip()
+                if stripped:
+                    st.session_state["student_name"] = stripped
                     st.session_state.pop("editing_name", None)
                     persist_now()
                     st.rerun()
     else:
+        # Should only appear if someone bypasses onboarding
         st.markdown('<p class="sidebar-section">👤 Guest</p>', unsafe_allow_html=True)
 
     # ── Learning Settings ──────────────────────────────────────────────────────
@@ -66,18 +70,18 @@ def draw_sidebar() -> None:
         key="language_selector",
     )
 
-    subjects  = curriculum.get_subjects_for_grade(grade)
-    cur_subj  = st.session_state.get("subject")
-    subj_idx  = subjects.index(cur_subj) if cur_subj in subjects else 0
-    subject   = st.selectbox("Subject", options=subjects, index=subj_idx,
-                              key="subject_selector")
+    subjects = curriculum.get_subjects_for_grade(grade)
+    cur_subj = st.session_state.get("subject")
+    subj_idx = subjects.index(cur_subj) if cur_subj in subjects else 0
+    subject  = st.selectbox("Subject", options=subjects, index=subj_idx,
+                             key="subject_selector")
 
-    topics       = curriculum.get_topics_for_grade_subject(grade, subject)
+    topics        = curriculum.get_topics_for_grade_subject(grade, subject)
     topic_options = ["All Topics"] + topics
-    cur_topic    = st.session_state.get("topic", "All Topics")
-    topic_idx    = topic_options.index(cur_topic) if cur_topic in topic_options else 0
-    topic        = st.selectbox("Topic", options=topic_options, index=topic_idx,
-                                key="topic_selector")
+    cur_topic     = st.session_state.get("topic", "All Topics")
+    topic_idx     = topic_options.index(cur_topic) if cur_topic in topic_options else 0
+    topic         = st.selectbox("Topic", options=topic_options, index=topic_idx,
+                                 key="topic_selector")
 
     st.markdown("---")
     if st.button("🔄 Apply Settings", type="primary", use_container_width=True):
@@ -107,6 +111,7 @@ def draw_sidebar() -> None:
                         "quiz_score", "active_quiz"):
                 st.session_state.pop(key, None)
 
+            # persist_now includes the name — URL will have ?name=X&grade=Y...
             persist_now()
             st.success("✅ Settings applied!")
             st.rerun()
@@ -116,7 +121,7 @@ def draw_sidebar() -> None:
     # ── Current settings summary ───────────────────────────────────────────────
     st.markdown('<p class="sidebar-section">📋 Current Settings</p>',
                 unsafe_allow_html=True)
-    diff     = st.session_state.get("difficulty", "Standard")
+    diff      = st.session_state.get("difficulty", "Standard")
     diff_icon = DIFFICULTY_ICONS.get(diff, "🟡")
     st.markdown(f"""
 - **Grade:** {st.session_state.get('grade', grade)}
@@ -155,11 +160,11 @@ def draw_sidebar() -> None:
         col1.metric("🎯 Points", stats["points"])
         col2.metric("🔥 Streak", f"{stats['streak_days']}d")
 
-    # ── Study List (Feature #6) ────────────────────────────────────────────────
+    # ── Study List ─────────────────────────────────────────────────────────────
     st.markdown("---")
     draw_study_list()
 
-    # ── Report Card (Feature #2) ───────────────────────────────────────────────
+    # ── Report Card ────────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown('<p class="sidebar-section">📄 Report Card</p>', unsafe_allow_html=True)
     from frontend_components.report_card import draw_report_card_section
