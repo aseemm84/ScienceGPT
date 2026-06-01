@@ -1,204 +1,202 @@
 """
-Student Progress Tracker for ScienceGPT
-Tracks learning analytics and progress metrics
+Student Progress Tracker for ScienceGPT v2.
+Now actually called from the frontend — sessions, questions, and quiz results recorded.
 """
 
 import streamlit as st
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Any
 import json
 
-class StudentProgress:
-    """Tracks and analyzes student learning progress"""
+from utils.helpers import get_logger, make_cache_key, set_to_list, now_iso
 
-    def __init__(self):
-        """Initialize student progress tracker"""
-        if 'progress_data' not in st.session_state:
+log = get_logger(__name__)
+
+_EMPTY: dict[str, Any] = {
+    "sessions": [],
+    "questions_by_subject": {},
+    "questions_by_grade": {},
+    "topic_coverage": {},          # {subject: [topics]}  — lists, not sets
+    "quiz_results": {},            # {subject/topic key: [scores]}
+    "performance_metrics": {
+        "total_questions": 0,
+        "total_time_spent": 0.0,
+        "favorite_subjects": [],
+    },
+}
+
+
+class StudentProgress:
+    """Tracks learning sessions, questions, topics, and quiz results."""
+
+    def __init__(self) -> None:
+        if "progress_data" not in st.session_state:
             st.session_state.progress_data = {
-                "sessions": [],
-                "questions_by_subject": {},
-                "questions_by_grade": {},
-                "learning_time": {},
-                "topic_coverage": {},
-                "performance_metrics": {
-                    "total_questions": 0,
-                    "total_time_spent": 0,
-                    "favorite_subjects": [],
-                    "learning_patterns": {}
-                }
+                k: (v.copy() if isinstance(v, dict) else v)
+                for k, v in _EMPTY.items()
             }
 
-    def start_session(self):
-        """Start a new learning session"""
-        session_data = {
-            "start_time": datetime.now().isoformat(),
+    @property
+    def _data(self) -> dict[str, Any]:
+        return st.session_state.progress_data
+
+    # ── Session lifecycle ─────────────────────────────────────────────────────
+
+    def start_session(self) -> None:
+        st.session_state.current_session = {
+            "start_time": now_iso(),
             "end_time": None,
             "questions_asked": 0,
-            "subjects_covered": set(),
-            "grade": st.session_state.get('grade', 3),
-            "language": st.session_state.get('language', 'English')
+            "subjects_covered": [],
+            "grade": st.session_state.get("grade", 8),
+            "language": st.session_state.get("language", "English"),
         }
 
-        st.session_state.current_session = session_data
+    def end_session(self) -> None:
+        if "current_session" not in st.session_state:
+            return
+        session = st.session_state.current_session
+        session["end_time"] = now_iso()
+        self._data["sessions"].append(session)
+        self._update_metrics(session)
+        del st.session_state.current_session
 
-    def end_session(self):
-        """End the current learning session"""
-        if 'current_session' in st.session_state:
-            session = st.session_state.current_session
-            session['end_time'] = datetime.now().isoformat()
-            session['subjects_covered'] = list(session['subjects_covered'])
+    # ── Question recording ────────────────────────────────────────────────────
 
-            # Add to sessions history
-            st.session_state.progress_data['sessions'].append(session)
+    def record_question(self, question: str, subject: str, grade: int, topic: str = "") -> None:
+        # Current session
+        if "current_session" in st.session_state:
+            cs = st.session_state.current_session
+            cs["questions_asked"] += 1
+            if subject not in cs["subjects_covered"]:
+                cs["subjects_covered"].append(subject)
 
-            # Update metrics
-            self._update_metrics(session)
+        # Subject totals
+        self._data["questions_by_subject"][subject] = (
+            self._data["questions_by_subject"].get(subject, 0) + 1
+        )
 
-            del st.session_state.current_session
+        # Grade totals
+        gk = f"Grade {grade}"
+        self._data["questions_by_grade"][gk] = (
+            self._data["questions_by_grade"].get(gk, 0) + 1
+        )
 
-    def record_question(self, question: str, subject: str, grade: int, topic: str = None):
-        """Record a question asked by the student"""
-        # Update current session
-        if 'current_session' in st.session_state:
-            st.session_state.current_session['questions_asked'] += 1
-            st.session_state.current_session['subjects_covered'].add(subject)
-
-        # Update subject tracking
-        if subject not in st.session_state.progress_data['questions_by_subject']:
-            st.session_state.progress_data['questions_by_subject'][subject] = 0
-        st.session_state.progress_data['questions_by_subject'][subject] += 1
-
-        # Update grade tracking
-        grade_key = f"Grade {grade}"
-        if grade_key not in st.session_state.progress_data['questions_by_grade']:
-            st.session_state.progress_data['questions_by_grade'][grade_key] = 0
-        st.session_state.progress_data['questions_by_grade'][grade_key] += 1
-
-        # Update topic coverage
+        # Topic coverage
         if topic and topic != "All Topics":
-            if subject not in st.session_state.progress_data['topic_coverage']:
-                st.session_state.progress_data['topic_coverage'][subject] = set()
-            st.session_state.progress_data['topic_coverage'][subject].add(topic)
+            tc = self._data.setdefault("topic_coverage", {})
+            if subject not in tc:
+                tc[subject] = []
+            if topic not in tc[subject]:
+                tc[subject].append(topic)
 
-        # Update total questions
-        st.session_state.progress_data['performance_metrics']['total_questions'] += 1
+        self._data["performance_metrics"]["total_questions"] += 1
 
-    def _update_metrics(self, session: Dict):
-        """Update performance metrics based on completed session"""
-        # Calculate session duration
-        if session['end_time'] and session['start_time']:
-            start = datetime.fromisoformat(session['start_time'])
-            end = datetime.fromisoformat(session['end_time'])
-            duration = (end - start).total_seconds() / 60  # minutes
+    # ── Quiz recording ────────────────────────────────────────────────────────
 
-            st.session_state.progress_data['performance_metrics']['total_time_spent'] += duration
+    def record_quiz_result(self, subject: str, topic: str, score: float, total: float) -> None:
+        """Record a quiz result as a percentage."""
+        key = make_cache_key(subject, topic)
+        results: list[float] = self._data.setdefault("quiz_results", {}).get(key, [])
+        pct = round((score / total) * 100) if total > 0 else 0
+        results.append(pct)
+        self._data["quiz_results"][key] = results
 
-        # Update favorite subjects
-        questions_by_subject = st.session_state.progress_data['questions_by_subject']
-        if questions_by_subject:
-            favorite_subjects = sorted(
-                questions_by_subject.items(), 
-                key=lambda x: x[1], 
-                reverse=True
-            )[:3]
-            st.session_state.progress_data['performance_metrics']['favorite_subjects'] = [
-                {"subject": subj, "count": count} for subj, count in favorite_subjects
-            ]
+    def get_topic_mastery(self, subject: str, topic: str) -> float | None:
+        """Return average quiz score (0-100) for a topic, or None if never attempted."""
+        key = make_cache_key(subject, topic)
+        results = self._data.get("quiz_results", {}).get(key)
+        if not results:
+            return None
+        return round(sum(results) / len(results), 1)
 
-    def get_progress_summary(self) -> Dict[str, Any]:
-        """Get comprehensive progress summary"""
-        data = st.session_state.progress_data
-        metrics = data['performance_metrics']
+    def get_mastery_grid(self, grade: int, subject: str) -> list[dict[str, Any]]:
+        """
+        Return mastery data for every topic in a grade/subject,
+        ready to render as a heatmap.
+        """
+        from backend_code.curriculum_data import get_curriculum
+        topics = get_curriculum().get_topics_for_grade_subject(grade, subject)
+        grid = []
+        for t in topics:
+            mastery = self.get_topic_mastery(subject, t)
+            coverage = (
+                t in self._data.get("topic_coverage", {}).get(subject, [])
+            )
+            grid.append({
+                "topic": t,
+                "mastery": mastery,       # None | 0-100
+                "attempted": coverage,
+            })
+        return grid
 
-        # Calculate learning consistency
-        sessions = data.get('sessions', [])
-        if sessions:
-            # Group sessions by date
-            daily_sessions = {}
-            for session in sessions:
-                date = datetime.fromisoformat(session['start_time']).date()
-                if date not in daily_sessions:
-                    daily_sessions[date] = 0
-                daily_sessions[date] += 1
+    # ── Summaries ─────────────────────────────────────────────────────────────
 
-            consistency_score = len(daily_sessions) * 10  # 10 points per day
-        else:
-            consistency_score = 0
+    def get_progress_summary(self) -> dict[str, Any]:
+        metrics = self._data["performance_metrics"]
+        sessions = self._data.get("sessions", [])
+        qbs = self._data.get("questions_by_subject", {})
 
-        # Calculate subject diversity
-        subjects_explored = len(data.get('questions_by_subject', {}))
-        diversity_score = subjects_explored * 15  # 15 points per subject
+        daily_sessions: dict = {}
+        for s in sessions:
+            d = datetime.fromisoformat(s["start_time"]).date()
+            daily_sessions[d] = daily_sessions.get(d, 0) + 1
 
         return {
-            "total_questions": metrics.get('total_questions', 0),
-            "total_time_spent": round(metrics.get('total_time_spent', 0), 1),
-            "subjects_explored": subjects_explored,
+            "total_questions": metrics.get("total_questions", 0),
+            "total_time_spent": round(metrics.get("total_time_spent", 0.0), 1),
+            "subjects_explored": len(qbs),
             "sessions_count": len(sessions),
-            "favorite_subjects": metrics.get('favorite_subjects', []),
-            "consistency_score": consistency_score,
-            "diversity_score": diversity_score,
-            "overall_score": consistency_score + diversity_score + metrics.get('total_questions', 0),
-            "questions_by_subject": data.get('questions_by_subject', {}),
-            "topic_coverage": {
-                subj: list(topics) for subj, topics in data.get('topic_coverage', {}).items()
-            }
+            "favorite_subjects": metrics.get("favorite_subjects", []),
+            "consistency_score": len(daily_sessions) * 10,
+            "questions_by_subject": qbs,
+            "topic_coverage": self._data.get("topic_coverage", {}),
         }
 
-    def get_weekly_progress(self) -> List[Dict[str, Any]]:
-        """Get progress for the last 7 days"""
-        sessions = st.session_state.progress_data.get('sessions', [])
-
-        # Get last 7 days
+    def get_weekly_progress(self) -> list[dict[str, Any]]:
+        sessions = self._data.get("sessions", [])
         today = datetime.now().date()
-        week_days = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
+        week = [(today - timedelta(days=i)) for i in range(6, -1, -1)]
 
-        daily_progress = []
-        for day in week_days:
+        result = []
+        for day in week:
             day_sessions = [
-                s for s in sessions 
-                if datetime.fromisoformat(s['start_time']).date() == day
+                s for s in sessions
+                if datetime.fromisoformat(s["start_time"]).date() == day
             ]
-
-            total_questions = sum(s.get('questions_asked', 0) for s in day_sessions)
-            subjects_covered = set()
-            for session in day_sessions:
-                subjects_covered.update(session.get('subjects_covered', []))
-
-            daily_progress.append({
+            subjects: set[str] = set()
+            for s in day_sessions:
+                subjects.update(s.get("subjects_covered", []))
+            result.append({
                 "date": day.strftime("%Y-%m-%d"),
                 "day_name": day.strftime("%a"),
-                "questions": total_questions,
-                "subjects": len(subjects_covered),
-                "sessions": len(day_sessions)
+                "questions": sum(s.get("questions_asked", 0) for s in day_sessions),
+                "subjects": len(subjects),
+                "sessions": len(day_sessions),
             })
-
-        return daily_progress
+        return result
 
     def export_progress_data(self) -> str:
-        """Export progress data as JSON string"""
-        # Convert sets to lists for JSON serialization
-        export_data = st.session_state.progress_data.copy()
+        return json.dumps(set_to_list(self._data), indent=2, default=str)
 
-        # Convert topic_coverage sets to lists
-        if 'topic_coverage' in export_data:
-            export_data['topic_coverage'] = {
-                subj: list(topics) for subj, topics in export_data['topic_coverage'].items()
-            }
-
-        return json.dumps(export_data, indent=2, default=str)
-
-    def clear_progress_data(self):
-        """Clear all progress data"""
+    def clear(self) -> None:
         st.session_state.progress_data = {
-            "sessions": [],
-            "questions_by_subject": {},
-            "questions_by_grade": {},
-            "learning_time": {},
-            "topic_coverage": {},
-            "performance_metrics": {
-                "total_questions": 0,
-                "total_time_spent": 0,
-                "favorite_subjects": [],
-                "learning_patterns": {}
-            }
+            k: (v.copy() if isinstance(v, dict) else v)
+            for k, v in _EMPTY.items()
         }
+
+    # ── Private ───────────────────────────────────────────────────────────────
+
+    def _update_metrics(self, session: dict) -> None:
+        if session.get("end_time") and session.get("start_time"):
+            start = datetime.fromisoformat(session["start_time"])
+            end = datetime.fromisoformat(session["end_time"])
+            duration = (end - start).total_seconds() / 60
+            self._data["performance_metrics"]["total_time_spent"] += duration
+
+        qbs = self._data["questions_by_subject"]
+        if qbs:
+            top3 = sorted(qbs.items(), key=lambda x: x[1], reverse=True)[:3]
+            self._data["performance_metrics"]["favorite_subjects"] = [
+                {"subject": s, "count": c} for s, c in top3
+            ]

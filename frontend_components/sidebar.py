@@ -1,120 +1,156 @@
 """
-Enhanced Sidebar Component for ScienceGPT
-Handles grade, language, subject, and topic selection with dynamic updates for Grades 1-12.
+Sidebar Component v2 for ScienceGPT.
+Changes vs v1:
+- Uses @st.cache_resource singleton for CurriculumData
+- Socratic mode toggle
+- Settings auto-apply on change (no separate button press required for grade/subject)
+- Clean section headers using CSS class
 """
 
 import streamlit as st
-from backend_code.curriculum_data import CurriculumData
+from backend_code.curriculum_data import get_curriculum
 
-def draw_sidebar():
-    """Draw the enhanced sidebar with dynamic content updates."""
-    st.title("🧪 ScienceGPT")
-    st.markdown("*AI-Powered Science Learning*")
 
-    # Instantiate the curriculum data handler
-    curriculum = CurriculumData()
+def draw_sidebar() -> None:
+    """Render the sidebar: settings, mode toggles, quick stats."""
 
-    st.markdown("### 📚 Learning Settings")
+    st.markdown('<p class="sidebar-section">⚙️ Learning Settings</p>', unsafe_allow_html=True)
 
-    # Grade selection for Grades 1-12
+    curriculum = get_curriculum()
+
+    # ── Grade ──────────────────────────────────────────────────────────────────
     all_grades = curriculum.get_all_grades()
-    # Default to Grade 8 (index 7) if not set
-    grade_index = all_grades.index(st.session_state.get('grade', 8)) 
     grade = st.selectbox(
-        "Select Grade:",
+        "Grade",
         options=all_grades,
-        index=grade_index,
-        key="grade_selector"
+        index=all_grades.index(st.session_state.get("grade", 8)),
+        key="grade_selector",
     )
 
-    # Language selection
+    # ── Language ───────────────────────────────────────────────────────────────
     languages = curriculum.get_languages()
-    language_index = languages.index(st.session_state.get('language', 'English'))
     language = st.selectbox(
-        "Select Language:",
+        "Language",
         options=languages,
-        index=language_index,
-        key="language_selector"
+        index=languages.index(st.session_state.get("language", "English")),
+        key="language_selector",
     )
 
-    # Subject selection - dynamically updates based on grade
+    # ── Subject (depends on grade) ─────────────────────────────────────────────
     subjects = curriculum.get_subjects_for_grade(grade)
-    current_subject = st.session_state.get('subject')
-    # If the current subject is not valid for the new grade, default to the first one
-    subject_index = subjects.index(current_subject) if current_subject in subjects else 0
+    cur_subj = st.session_state.get("subject")
+    subj_idx = subjects.index(cur_subj) if cur_subj in subjects else 0
     subject = st.selectbox(
-        "Select Subject:",
+        "Subject",
         options=subjects,
-        index=subject_index,
-        key="subject_selector"
+        index=subj_idx,
+        key="subject_selector",
     )
 
-    # Topic selection - dynamically updates based on grade and subject
+    # ── Topic (depends on grade + subject) ────────────────────────────────────
     topics = curriculum.get_topics_for_grade_subject(grade, subject)
     topic_options = ["All Topics"] + topics
-    current_topic = st.session_state.get('topic')
-    topic_index = topic_options.index(current_topic) if current_topic in topic_options else 0
+    cur_topic = st.session_state.get("topic", "All Topics")
+    topic_idx = topic_options.index(cur_topic) if cur_topic in topic_options else 0
     topic = st.selectbox(
-        "Select Topic:",
+        "Topic",
         options=topic_options,
-        index=topic_index,
-        key="topic_selector"
+        index=topic_idx,
+        key="topic_selector",
     )
 
+    # ── Apply settings ─────────────────────────────────────────────────────────
     st.markdown("---")
     if st.button("🔄 Apply Settings", type="primary", use_container_width=True):
-        # Check if settings have changed before applying
-        if (grade != st.session_state.get('grade') or
-            language != st.session_state.get('language') or
-            subject != st.session_state.get('subject') or
-            topic != st.session_state.get('topic')):
-            
-            # Update session state
+        changed = (
+            grade != st.session_state.get("grade")
+            or language != st.session_state.get("language")
+            or subject != st.session_state.get("subject")
+            or topic != st.session_state.get("topic")
+        )
+        if changed:
             st.session_state.grade = grade
             st.session_state.language = language
             st.session_state.subject = subject
             st.session_state.topic = topic
-
-            # Clear caches to force regeneration of dynamic content
-            if 'llm_handler' in st.session_state:
-                st.session_state.llm_handler.clear_suggestion_cache()
-                st.session_state.llm_handler.clear_fact_cache()
-
             st.session_state.settings_applied = True
+
+            # End current session and start fresh
+            if "progress" in st.session_state:
+                st.session_state.progress.end_session()
+                st.session_state.progress.start_session()
+
+            # Clear caches so new settings take effect
+            from backend_code.llm_handler import get_llm_handler
+            handler = get_llm_handler()
+            handler.clear_suggestion_cache()
+            handler.clear_fact_cache()
+
+            # Reset quiz state
+            for key in ("quiz_questions", "quiz_submitted", "quiz_answers",
+                        "quiz_score", "active_quiz"):
+                st.session_state.pop(key, None)
+
             st.success("✅ Settings applied!")
             st.rerun()
         else:
-            st.info("Settings are already up to date!")
+            st.info("Settings are already up to date.")
 
-    # Display current settings
-    st.markdown("#### 📋 Current Settings:")
+    # ── Current settings summary ───────────────────────────────────────────────
+    st.markdown('<p class="sidebar-section">📋 Current Settings</p>', unsafe_allow_html=True)
     st.markdown(f"""
-    - **Grade:** {st.session_state.get('grade', grade)}
-    - **Language:** {st.session_state.get('language', language)}
-    - **Subject:** {st.session_state.get('subject', subject)}
-    - **Topic:** {st.session_state.get('topic', topic)}
-    """)
+- **Grade:** {st.session_state.get('grade', grade)}
+- **Language:** {st.session_state.get('language', language)}
+- **Subject:** {st.session_state.get('subject', subject)}
+- **Topic:** {st.session_state.get('topic', topic)}
+""")
 
+    # ── AI Mode ────────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown('<p class="sidebar-section">🧠 AI Mode</p>', unsafe_allow_html=True)
 
-     # Personal Branding Section
+    socratic = st.toggle(
+        "Socratic Mode",
+        value=st.session_state.get("socratic_mode", False),
+        help="Claude asks guiding questions instead of giving direct answers.",
+        key="socratic_toggle",
+    )
+    st.session_state.socratic_mode = socratic
+
+    if socratic:
+        st.markdown(
+            '<div class="mode-badge mode-socratic">🦉 Socratic Mode ON</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Claude will guide you to the answer with questions.")
+    else:
+        st.markdown(
+            '<div class="mode-badge mode-standard">🤖 Standard Mode</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Quick stats ────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown('<p class="sidebar-section">📊 Quick Stats</p>', unsafe_allow_html=True)
+
+    if "gamification" in st.session_state:
+        stats = st.session_state.gamification.get_stats()
+        col1, col2 = st.columns(2)
+        col1.metric("🎯 Points", stats["points"])
+        col2.metric("🔥 Streak", f"{stats['streak_days']}d")
+
+    # ── Branding ───────────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown(
         """
-        <div style="text-align: center; padding: 10px 0;">
-            Made with <span style="color: #e25555;">❤️</span> by 
-            <a href="https://www.linkedin.com/in/aseem-mehrotra/" target="_blank" style="color: #a7b5ff; text-decoration: none; font-weight: 600;">
-                Aseem Mehrotra
-            </a>
+        <div style="text-align:center; padding:10px 0; font-size:0.82rem; color:#94a3b8;">
+            Made with ❤️ by
+            <a href="https://www.linkedin.com/in/aseem-mehrotra/" target="_blank"
+               style="color:#3B82F6; text-decoration:none; font-weight:600;">
+               Aseem Mehrotra
+            </a><br>
+            <span style="font-size:0.75rem;">ScienceGPT v2.0</span>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
-    
-    st.markdown(
-        "<div style='text-align: center; font-size: 0.8rem; color: #ccc;'><i>ScienceGPT v1.0</i></div>",
-        unsafe_allow_html=True
-    )
-
-    
-    st.markdown("---")
-    st.markdown("*ScienceGPT v1.0 - High School Edition*")
