@@ -1,26 +1,19 @@
 """
-ScienceGPT v3 — app.py (name-fix revision)
+ScienceGPT v3 — app.py (simplified persistence)
 
-Bugs fixed vs previous version:
-1. _ls_checked guard was preventing re-reading query params on every rerun.
-   The guard was designed for the old JS bridge (which was slow). With
-   st.query_params it's instant — no guard needed. Removed entirely.
+Name handling strategy:
+- Ask for name once at the top of the main interface (inline, not a blocking gate)
+- Store in st.session_state["student_name"] for the duration of the session
+- On refresh: ask again (2-second friction, zero broken behaviour)
+- Onboarding flow removed — grade/subject/language selected via sidebar as before
+  (they persist correctly already via st.session_state + Apply Settings)
 
-2. initialize_session_state() was writing "student_name": "" into session_state
-   BEFORE _load_local_storage() ran. Then hydrate_from_payload() checked
-   `if not st.session_state.get("student_name")` — which returned "" (falsy),
-   so it DID write. But because initialize_session_state() always ran first
-   with the empty default, the check was fragile. Fixed by using a sentinel
-   value (None) instead of "" so the truthiness check is unambiguous.
-
-3. _complete_onboarding() called persist_now() then st.rerun() from the
-   caller. On the rerun, initialize_session_state() ran again and reset
-   student_name to "" BEFORE _load_local_storage() could restore it from
-   the query params — because the query params write happens inside
-   persist_now() which calls st.query_params[k] = v, but Streamlit doesn't
-   guarantee the query params are readable in the same rerun they're written.
-   Fixed by reading query params FIRST, then initialising defaults only for
-   keys that don't yet have a value.
+Why this is better than query_params:
+- Streamlit Cloud has been observed stripping or not propagating custom query
+  params written via st.query_params on certain deployments/CDN edges.
+- Session state is 100% reliable within a session.
+- The name input is non-blocking: the user can ask questions immediately,
+  the name just won't appear in the greeting until they enter it.
 """
 
 import streamlit as st
@@ -38,59 +31,10 @@ if _css_path.exists():
     st.markdown(f"<style>{_css_path.read_text()}</style>", unsafe_allow_html=True)
 
 
-# ── Step 1: read query params BEFORE setting any defaults ─────────────────────
-
-def _load_from_query_params() -> None:
-    """
-    Read ?name=&grade=&language=&subject=&difficulty= from the URL and write
-    them directly into session_state.
-
-    This runs BEFORE initialize_session_state() so that the defaults below
-    never overwrite values that came from the URL.
-
-    Guarded by _qp_loaded so it only runs once per browser session
-    (query params don't change mid-session unless we write them).
-    """
-    if st.session_state.get("_qp_loaded"):
-        return
-    st.session_state["_qp_loaded"] = True
-
-    name = st.query_params.get("name", "").strip()
-    if not name:
-        return  # no persisted user — onboarding will run
-
-    # Write directly into session_state — initialize_session_state will
-    # skip any key that already exists.
-    st.session_state["student_name"]    = name
-    st.session_state["onboarding_done"] = True
-
-    grade_raw = st.query_params.get("grade", "8")
-    try:
-        st.session_state["grade"] = int(grade_raw)
-    except ValueError:
-        st.session_state["grade"] = 8
-
-    for key, qp_key, default in [
-        ("language",   "language",   "English"),
-        ("subject",    "subject",    "Physics"),
-        ("difficulty", "difficulty", "Standard"),
-    ]:
-        val = st.query_params.get(qp_key, "").strip()
-        st.session_state[key] = val if val else default
-
-
-# ── Step 2: fill in any remaining defaults ────────────────────────────────────
-
 def initialize_session_state() -> None:
-    """
-    Set default values for all session_state keys.
-    Only sets a key if it is NOT already present — so query-param values
-    written in _load_from_query_params() are never overwritten.
-    """
     defaults = {
-        # Identity — use None sentinel so "no name yet" is distinguishable from ""
-        "student_name":    None,
-        "onboarding_done": False,
+        # Identity — None = not yet entered this session
+        "student_name": None,
 
         # Learning settings
         "grade":    8,
@@ -133,7 +77,6 @@ def initialize_session_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
 
-    # Singletons
     from backend_code.llm_handler import get_llm_handler
     from backend_code.curriculum_data import get_curriculum
     from backend_code.gamification import GamificationManager
@@ -150,22 +93,9 @@ def initialize_session_state() -> None:
         st.session_state.progress.start_session()
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
 def main() -> None:
-    # Order matters: query params first, then defaults
-    _load_from_query_params()
     initialize_session_state()
 
-    # Onboarding gate
-    from frontend_components.onboarding import is_onboarding_needed, draw_onboarding
-    if is_onboarding_needed():
-        _, col, _ = st.columns([1, 2, 1])
-        with col:
-            draw_onboarding()
-        return
-
-    # Normal app
     with st.sidebar:
         from frontend_components.sidebar import draw_sidebar
         draw_sidebar()
@@ -173,7 +103,9 @@ def main() -> None:
     col_main, col_right = st.columns([3, 1])
 
     with col_main:
-        tab_chat, tab_quiz, tab_progress = st.tabs(["💬 Chat", "📝 Quiz", "📊 My Progress"])
+        tab_chat, tab_quiz, tab_progress = st.tabs(
+            ["💬 Chat", "📝 Quiz", "📊 My Progress"]
+        )
 
         with tab_chat:
             from frontend_components.main_interface import draw_main_interface
@@ -230,7 +162,8 @@ def _draw_progress_tab() -> None:
         st.plotly_chart(fig, use_container_width=True)
     except ImportError:
         for d in weekly:
-            st.markdown(f"`{d['day_name']}` {'█' * d['questions'] or '·'} {d['questions']}")
+            bar = "█" * d["questions"] if d["questions"] else "·"
+            st.markdown(f"`{d['day_name']}` {bar} {d['questions']}")
 
     summary = st.session_state.progress.get_progress_summary()
     c1, c2, c3 = st.columns(3)
