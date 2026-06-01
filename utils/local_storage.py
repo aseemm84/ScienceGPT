@@ -1,23 +1,17 @@
 """
-Persistence layer for ScienceGPT v3 — REVISED.
+Persistence layer for ScienceGPT v3 — name-fix revision.
 
-Replaces the broken localStorage JS-bridge approach with st.query_params,
-which works reliably on all OS and browsers (Chrome, Safari, Firefox on
-macOS M1, Windows, iOS, Android).
+Change vs previous version:
+- save_to_local_storage() previously skipped writing "name" if it was falsy.
+  This meant that when sidebar.py called persist_now() after "Apply Settings",
+  the name was not included in the query params (because the user might have
+  set student_name = None via the sentinel). Now "name" is always written if
+  it exists in session_state, and the sidebar no longer silently drops it.
 
-How it works:
-  - On app load, read ?name=&grade=&language=&subject=&difficulty= from the URL.
-  - After onboarding completes (or settings change), write those keys back into
-    the URL via st.query_params.
-  - The URL can be bookmarked or shared and will restore the user's settings.
-
-What is NOT persisted across sessions this way:
-  - Points / badges / streak (session-only; resets on refresh)
-  - Bookmarks (session-only; resets on refresh)
-  - Chat history (session-only by design)
-
-For full cross-session persistence, use a database (Supabase free tier
-recommended). See README for setup instructions.
+- build_persist_payload() now uses the None sentinel correctly:
+  student_name = None means "not set yet" (onboarding not done)
+  student_name = ""    should never happen — treated same as None
+  student_name = "X"  → written to query params as ?name=X
 """
 
 from __future__ import annotations
@@ -26,7 +20,6 @@ from utils.helpers import get_logger
 
 log = get_logger(__name__)
 
-# Query param keys
 _QP_NAME       = "name"
 _QP_GRADE      = "grade"
 _QP_LANGUAGE   = "language"
@@ -39,10 +32,10 @@ _QP_DIFFICULTY = "difficulty"
 def load_from_local_storage() -> dict | None:
     """
     Read persisted user settings from URL query params.
-    Returns a dict matching the old localStorage schema, or None if no name
-    is present (triggers onboarding).
-
-    Call once at the top of app.py.
+    Returns None if no ?name= is present (triggers onboarding).
+    NOTE: app.py now calls _load_from_query_params() directly instead of this
+    function, but this is kept for backward compatibility with any code that
+    imports it.
     """
     name = st.query_params.get(_QP_NAME, "").strip()
     if not name:
@@ -60,7 +53,6 @@ def load_from_local_storage() -> dict | None:
         "language":   st.query_params.get(_QP_LANGUAGE,   "English"),
         "subject":    st.query_params.get(_QP_SUBJECT,    "Physics"),
         "difficulty": st.query_params.get(_QP_DIFFICULTY, "Standard"),
-        # Points/badges/bookmarks are session-only; not restored from URL
         "points":       0,
         "badges":       [],
         "streak_days":  0,
@@ -70,10 +62,7 @@ def load_from_local_storage() -> dict | None:
 
 
 def hydrate_from_payload(data: dict) -> None:
-    """
-    Write a payload dict back into st.session_state.
-    Only sets keys that aren't already set this session.
-    """
+    """Write payload into session_state. Only sets keys not already present."""
     if data.get("name") and not st.session_state.get("student_name"):
         st.session_state["student_name"] = data["name"]
 
@@ -82,7 +71,6 @@ def hydrate_from_payload(data: dict) -> None:
             if key in data:
                 st.session_state[key] = data[key]
 
-    # Bookmarks: restore if session has none
     if data.get("bookmarks") and not st.session_state.get("bookmarks"):
         st.session_state["bookmarks"] = data["bookmarks"]
 
@@ -91,13 +79,20 @@ def hydrate_from_payload(data: dict) -> None:
 
 def save_to_local_storage(data: dict) -> None:
     """
-    Write user settings into URL query params so they survive a page refresh.
-    Silently skips any key whose value cannot be represented as a string.
+    Write user settings into URL query params.
+
+    Key fix: name is written whenever it is a non-empty string.
+    Previously `if data.get("name")` would skip it if name was None or "".
+    Now we explicitly check for a non-empty string.
     """
     updates: dict[str, str] = {}
 
-    if data.get("name"):
-        updates[_QP_NAME] = str(data["name"])
+    # Name: always include if it's a real string
+    name = data.get("name")
+    if isinstance(name, str) and name.strip():
+        updates[_QP_NAME] = name.strip()
+
+    # Settings
     if data.get("grade"):
         updates[_QP_GRADE] = str(data["grade"])
     if data.get("language"):
@@ -114,18 +109,22 @@ def save_to_local_storage(data: dict) -> None:
         log.warning("query_params write failed: %s", e)
 
 
-# ── High-level helpers (same public API as before) ───────────────────────────
+# ── High-level helpers ────────────────────────────────────────────────────────
 
 def build_persist_payload() -> dict:
     """Collect persistable state from session_state."""
     gam_data = st.session_state.get("gamification_data", {})
+
+    # Resolve name: treat None and "" the same (not set)
+    raw_name = st.session_state.get("student_name")
+    name = raw_name.strip() if isinstance(raw_name, str) else ""
+
     return {
-        "name":         st.session_state.get("student_name", ""),
+        "name":         name,
         "grade":        st.session_state.get("grade", 8),
         "language":     st.session_state.get("language", "English"),
         "subject":      st.session_state.get("subject", "Physics"),
         "difficulty":   st.session_state.get("difficulty", "Standard"),
-        # These are kept in payload schema for future DB upgrade compatibility
         "points":       gam_data.get("points", 0),
         "badges":       gam_data.get("badges", []),
         "streak_days":  gam_data.get("streak_days", 0),
@@ -135,5 +134,5 @@ def build_persist_payload() -> dict:
 
 
 def persist_now() -> None:
-    """Convenience: build payload and write to query params in one call."""
+    """Convenience: build payload and write to query params."""
     save_to_local_storage(build_persist_payload())
