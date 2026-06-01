@@ -1,80 +1,155 @@
-/* ScienceGPT v2 — Custom Styles
-   Loaded once in app.py via st.markdown
-*/
+/* ScienceGPT v3 — Custom Styles */
 
 /* ── Google Fonts ─────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
 /* ── CSS variables ────────────────────────────────────────────── */
 :root {
-    --brand-primary:   #3B82F6;
-    --brand-secondary: #10B981;
-    --brand-accent:    #F59E0B;
-    --brand-danger:    #EF4444;
-    --surface-1:       #F8FAFC;
-    --surface-2:       #F1F5F9;
-    --border:          #E2E8F0;
-    --text-primary:    #0F172A;
-    --text-secondary:  #64748B;
-    --radius:          12px;
-    --shadow:          0 2px 12px rgba(0,0,0,0.08);
+    --brand-primary:   #1e40af;
+    --brand-secondary: #0f766e;
+    --brand-accent:    #f59e0b;
+    --brand-coral:     #fb7185;
+    --surface-1:       #f8fafc;
+    --surface-2:       #f1f5f9;
+    --border:          #e2e8f0;
+    --text-primary:    #0f172a;
+    --text-secondary:  #64748b;
+    --radius:          14px;
+    --radius-sm:       8px;
+    --shadow:          0 2px 16px rgba(0,0,0,0.08);
+    --shadow-md:       0 4px 24px rgba(0,0,0,0.12);
 }
 
 /* ── App shell ────────────────────────────────────────────────── */
-.stApp {
-    font-family: 'DM Sans', sans-serif;
-}
-
-h1, h2, h3 {
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-}
+.stApp { font-family: 'Nunito', sans-serif; }
+h1, h2, h3 { font-family: 'Space Mono', monospace; font-weight: 700; }
 
 /* ── Hero header ──────────────────────────────────────────────── */
 .sgpt-hero {
     text-align: center;
-    padding: 2rem 1rem 1rem;
-    background: linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 100%);
+    padding: 2rem 1rem 1.4rem;
+    background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
     border-radius: var(--radius);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.2rem;
     border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
 }
-
+.sgpt-hero::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 140px; height: 140px;
+    background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%);
+    border-radius: 50%;
+}
 .sgpt-hero h1 {
-    font-size: 2.8rem;
+    font-size: 2.6rem;
     margin-bottom: 0.2rem;
     background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-
-.sgpt-hero p {
+.hero-greeting {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--brand-primary);
+    margin: 0.1rem 0;
+}
+.hero-sub {
     color: var(--text-secondary);
-    font-size: 1.1rem;
+    font-size: 0.9rem;
     margin: 0;
 }
+.sgpt-hero p { color: var(--text-secondary); font-size: 1.05rem; margin: 0; }
+
+/* ── Onboarding shell ─────────────────────────────────────────── */
+.onboarding-shell {
+    text-align: center;
+    padding: 3rem 1rem 1.5rem;
+    background: linear-gradient(160deg, #eff6ff 0%, #f0fdfa 100%);
+    border-radius: var(--radius);
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border);
+}
+.onboarding-logo { font-size: 4rem; margin-bottom: 0.5rem; }
+.onboarding-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.8rem;
+    background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.3rem;
+}
+.onboarding-sub { color: var(--text-secondary); font-size: 1rem; }
+.onboarding-question {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+    margin: 1.2rem 0 1rem;
+}
+.ob-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 1rem;
+}
+.ob-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.dot-idle   { background: var(--border); }
+.dot-done   { background: var(--brand-secondary); }
+.dot-active { background: var(--brand-primary); width: 24px; border-radius: 5px; }
 
 /* ── Mode badge ───────────────────────────────────────────────── */
 .mode-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 12px;
+    padding: 4px 14px;
     border-radius: 999px;
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 700;
     font-family: 'Space Mono', monospace;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.5rem;
 }
+.mode-standard { background: #dbeafe; color: #1d4ed8; }
+.mode-socratic { background: #fef3c7; color: #92400e; }
 
-.mode-standard  { background: #DBEAFE; color: #1D4ED8; }
-.mode-socratic  { background: #FEF3C7; color: #92400E; }
+/* ── Difficulty pills ─────────────────────────────────────────── */
+.diff-strip {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 0.8rem;
+}
 
 /* ── Chat bubbles ─────────────────────────────────────────────── */
 .stChatMessage [data-testid="stChatMessageContent"] {
     border-radius: var(--radius) !important;
     border: 1px solid var(--border);
+}
+
+/* ── Summary card (Feature #4) ───────────────────────────────── */
+.summary-card {
+    background: linear-gradient(135deg, #f0fdf4, #eff6ff);
+    border: 1px solid #a7f3d0;
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+}
+.remember-this {
+    margin-top: 0.8rem;
+    background: #fefce8;
+    border-left: 4px solid var(--brand-accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+    color: #713f12;
 }
 
 /* ── Quiz card ────────────────────────────────────────────────── */
@@ -86,7 +161,6 @@ h1, h2, h3 {
     margin-bottom: 1rem;
     box-shadow: var(--shadow);
 }
-
 .quiz-card .q-number {
     font-family: 'Space Mono', monospace;
     font-size: 0.75rem;
@@ -95,10 +169,9 @@ h1, h2, h3 {
     letter-spacing: 0.08em;
     margin-bottom: 0.4rem;
 }
-
 .quiz-card .q-text {
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 0.8rem;
 }
@@ -110,31 +183,30 @@ h1, h2, h3 {
     gap: 6px;
     padding: 6px 14px;
     border-radius: 999px;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.9rem;
 }
+.result-correct   { background: #d1fae5; color: #065f46; }
+.result-incorrect { background: #fee2e2; color: #991b1b; }
+.result-partial   { background: #fef3c7; color: #92400e; }
 
-.result-correct   { background: #D1FAE5; color: #065F46; }
-.result-incorrect { background: #FEE2E2; color: #991B1B; }
-.result-partial   { background: #FEF3C7; color: #92400E; }
-
-/* ── Mastery heatmap cell ─────────────────────────────────────── */
+/* ── Mastery cell ─────────────────────────────────────────────── */
 .mastery-cell {
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     padding: 6px 10px;
     font-size: 0.8rem;
     text-align: center;
-    font-weight: 500;
-    cursor: default;
+    font-weight: 600;
 }
 
 /* ── Explain-back box ─────────────────────────────────────────── */
 .explain-back-box {
-    background: linear-gradient(135deg, #F0FDF4, #EFF6FF);
+    background: linear-gradient(135deg, #f0fdf4, #eff6ff);
     border: 1px solid var(--brand-secondary);
     border-radius: var(--radius);
     padding: 1rem 1.2rem;
     margin-top: 1rem;
+    font-size: 0.9rem;
 }
 
 /* ── Sidebar section header ───────────────────────────────────── */
@@ -142,32 +214,27 @@ h1, h2, h3 {
     font-family: 'Space Mono', monospace;
     font-size: 0.72rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     color: var(--text-secondary);
     margin: 1rem 0 0.4rem;
 }
 
 /* ── Fact card ────────────────────────────────────────────────── */
 .fact-card {
-    background: linear-gradient(135deg, #EFF6FF, #F0FDF4);
+    background: linear-gradient(135deg, #eff6ff, #f0fdf4);
     border-left: 4px solid var(--brand-primary);
     border-radius: 0 var(--radius) var(--radius) 0;
     padding: 1rem 1.2rem;
     margin: 0.6rem 0;
 }
-
 .fact-card .fact-text {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
     font-size: 0.95rem;
 }
 
-/* ── Score ring (used in explain-back result) ─────────────────── */
-.score-display {
-    text-align: center;
-    padding: 0.8rem;
-}
-
+/* ── Score display ────────────────────────────────────────────── */
+.score-display { text-align: center; padding: 0.8rem; }
 .score-number {
     font-family: 'Space Mono', monospace;
     font-size: 2.8rem;
@@ -175,41 +242,52 @@ h1, h2, h3 {
     line-height: 1;
 }
 
-/* ── Achievement badge ────────────────────────────────────────── */
+/* ── Badge chip ───────────────────────────────────────────────── */
 .badge-chip {
     text-align: center;
     padding: 10px 8px;
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-
 .badge-chip:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
 }
 
 /* ── Streamlit overrides ──────────────────────────────────────── */
 div[data-testid="stSidebar"] {
     background: var(--surface-2) !important;
 }
-
 .stButton > button {
-    border-radius: 8px !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 500 !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: 'Nunito', sans-serif !important;
+    font-weight: 700 !important;
     transition: all 0.15s ease !important;
 }
-
 .stButton > button:hover {
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(59,130,246,0.25) !important;
+    box-shadow: 0 4px 12px rgba(30,64,175,0.2) !important;
 }
-
 div[data-testid="stMetric"] {
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.8rem 1rem;
 }
+
+/* ── Onboarding grade grid animation ─────────────────────────── */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.onboarding-shell { animation: fadeUp 0.4s ease; }
+
+/* ── Points pop animation (gamification) ─────────────────────── */
+@keyframes pointsPop {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.2); color: #f59e0b; }
+    100% { transform: scale(1); }
+}
+.points-pop { animation: pointsPop 0.4s ease; }
